@@ -26,7 +26,7 @@ CHAVE_INTERNA_IA = os.environ.get("GEMINI_API_KEY", "AQ.Ab8RN6ITcrnd309KcEI_WnR8
 
 # URL do seu painel de controle (Planilha/Webhook) para onde o site vai deduzir o uso
 # Se você criar uma automação no Make.com ou n8n, você cola o link deles aqui
-WEBHOOK_MONITORAMENTO = "https://seu-painel-de-controle.com"
+WEBHOOK_MONITORAMENTO = https://script.google.com/macros/s/AKfycbxx7p02rVYuCT74o4FmJ6JFM-yjbW6JEx26MxPwHOrB_aOUMML4vyFJmfv87Yxxm9MpqA/exec
 
 arquivo_upload = st.file_uploader("Escolha o arquivo CSV da sua planilha", type=["csv"])
 
