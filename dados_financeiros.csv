@@ -1,0 +1,7 @@
+id_transacao,data,descricao,categoria,valor,status
+TX1001,2026-09-20,Licença de Software Mensal,TI,1500.00,Pago
+TX1002,2026-09-21,Consultoria Externa,Serviços,0.00,Pago
+TX1003,2026-09-21,Consultoria Externa,Serviços,8500.00,Pago
+TX1004,2026-09-22,Aluguel Escritório,Infra,4500.00,Pago
+TX1005,2026-09-22,Aluguel Escritório,Infra,4500.00,Pago
+TX1006,2026-09-23,Reembolso Viagem Direção,Viagens,75200.00,Pendente
