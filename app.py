@@ -187,8 +187,8 @@ if df is not None:
                     "Seja extremamente formal, técnico e ofereça recomendações claras de governança e auditoria."
                 )
                 
-                # LISTA ATUALIZADA: Apenas com modelos oficialmente mapeados na SDK google-genai
-                modelos_disponiveis = ['gemini-3.8-flash', 'gemini-2.5-flash', 'gemini-1.5-pro']
+                # LISTA CORRIGIDA: Modelos funcionais com suporte na SDK atual
+                modelos_disponiveis = ['gemini-3.8-flash', 'gemini-2.0-flash', 'gemini-1.5-pro']
                 resposta = None
                 erro_acumulado = ""
                 
