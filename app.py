@@ -31,7 +31,7 @@ if arquivo_upload is not None:
             else:
                 with st.spinner("O ScoutIA está processando os dados na nuvem... Aguarde."):
                     try:
-                        # Inicialização direta e padrão para evitar bloqueios de validação do SDK
+                        # Inicialização limpa e direta do cliente
                         client = genai.Client(api_key=chave_limpa)
                         dados_em_texto = df.to_markdown(index=False)
                         
@@ -42,9 +42,9 @@ if arquivo_upload is not None:
                             f"Alertas Críticos com IDs, Impacto Financeiro e Plano de Ação:\n\n{dados_em_texto}"
                         )
                         
-                        # Chamada simplificada utilizando o modelo padrão de produção atual
+                        # CORREÇÃO: Atualizado para o modelo obrigatório exigido pela Google
                         response = client.models.generate_content(
-                            model='gemini-2.5-flash', 
+                            model='gemini-3.8-flash', 
                             contents=prompt_completo
                         )
                         
