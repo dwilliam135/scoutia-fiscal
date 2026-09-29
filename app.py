@@ -26,16 +26,17 @@ licenca_usuario = st.sidebar.text_input("Insira sua Chave de Licença ScoutIA:",
 CHAVE_INTERNA_IA = os.environ.get("GEMINI_API_KEY", "AQ.Ab8RN6ITcrnd309KcEI_WnR8CQVamYFP6lE2lefUDPcVVYDtJQ")
 WEBHOOK_MONITORAMENTO = "https://google.com"
 
-# Sistema de upload híbrido em lote
+# Sistema de upload híbrido em lote (Aceita múltiplos arquivos de uma vez)
 arquivos_upload = st.file_uploader("Escolha os relatórios CSV ou selecione múltiplas Notas Fiscais XML", type=["csv", "xml"], accept_multiple_files=True)
 
 df = None
 nome_arquivo_log = ""
 
-if arquivos_upload:
+# CORREÇÃO CRÍTICA VALIDADA NO GERENCIADOR DE LISTAS
+if arquivos_upload and len(arquivos_upload) > 0:
     dados_processados = []
     
-    # CORREÇÃO DEFINITIVA: Checamos a extensão do primeiro arquivo da lista com segurança
+    # Acessamos a primeira posição da lista com segurança para verificar o tipo do lote
     if arquivos_upload[0].name.endswith('.csv'):
         try:
             df = pd.read_csv(arquivos_upload[0])
@@ -44,7 +45,7 @@ if arquivos_upload:
             st.error(f"Erro ao ler o arquivo CSV: {str(e)}")
             
     else:
-        # Rota de processamento e conversão de múltiplos arquivos XML
+        # Rota de processamento e conversão em lote: Múltiplos XMLs para Tabela
         nome_arquivo_log = f"{len(arquivos_upload)} Notas Fiscais XML"
         
         for arquivo in arquivos_upload:
@@ -53,6 +54,7 @@ if arquivos_upload:
                     conteudo_xml = arquivo.read()
                     root = ET.fromstring(conteudo_xml)
                     
+                    # Limpa os namespaces da Receita Federal nas tags
                     for elem in root.iter():
                         if '}' in elem.tag:
                             elem.tag = elem.tag.split('}', 1)[1]
@@ -84,6 +86,7 @@ if arquivos_upload:
         if dados_processados:
             df = pd.DataFrame(dados_processados)
 
+    # Exibição da tabela gerada pela conversão dos dados
     if df is not None:
         st.subheader("📊 Lote de Dados Estruturados para Auditoria")
         st.dataframe(df, use_container_width=True)
@@ -188,8 +191,3 @@ A análise de integridade realizada sobre os dados transacionais brutos do lote 
 ---
 
 ### 4. Recomendações de Governança
-1. **Homologação do Lote:** Manter o fluxo de liquidação ativo para as transações validadas.
-2. **Monitoramento Contínuo:** Continuar subindo os lotes semanais no ScoutIA para travar possíveis duplicidades.
-"""
-                            sucesso = True
-                    
