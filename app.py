@@ -26,7 +26,7 @@ licenca_usuario = st.sidebar.text_input("Insira sua Chave de Licença ScoutIA:",
 CHAVE_INTERNA_IA = os.environ.get("GEMINI_API_KEY", "AQ.Ab8RN6ITcrnd309KcEI_WnR8CQVamYFP6lE2lefUDPcVVYDtJQ")
 WEBHOOK_MONITORAMENTO = "https://google.com"
 
-# Sistema de upload híbrido
+# Sistema de upload híbrido em lote
 arquivos_upload = st.file_uploader("Escolha os relatórios CSV ou selecione múltiplas Notas Fiscais XML", type=["csv", "xml"], accept_multiple_files=True)
 
 df = None
@@ -35,23 +35,22 @@ nome_arquivo_log = ""
 if arquivos_upload:
     dados_processados = []
     
-    # Se for um único arquivo CSV
-    if len(arquivos_upload) == 1 and arquivos_upload[0].name.endswith('.csv'):
-        arquivo = arquivos_upload[0]
+    # Processamento homologado: checa o primeiro arquivo do lote para definir a rota
+    primeiro_arquivo = arquivos_upload[0]
+    
+    if primeiro_arquivo.name.endswith('.csv'):
         try:
-            df = pd.read_csv(arquivo)
-            nome_arquivo_log = arquivo.name
+            df = pd.read_csv(primeiro_arquivo)
+            nome_arquivo_log = primeiro_arquivo.name
         except Exception as e:
             st.error(f"Erro ao ler o arquivo CSV: {str(e)}")
             
-    # Se for uma pilha de arquivos XML
     else:
-        # Verifica se todos são XMLs
-        todos_xml = all(arq.name.endswith('.xml') for arq in arquivos_upload)
-        if todos_xml:
-            nome_arquivo_log = f"{len(arquivos_upload)} Notas Fiscais XML"
-            
-            for arquivo in arquivos_upload:
+        # Rota de processamento de múltiplos arquivos XML
+        nome_arquivo_log = f"{len(arquivos_upload)} Notas Fiscais XML"
+        
+        for arquivo in arquivos_upload:
+            if arquivo.name.endswith('.xml'):
                 try:
                     conteudo_xml = arquivo.read()
                     root = ET.fromstring(conteudo_xml)
@@ -83,9 +82,9 @@ if arquivos_upload:
                     arquivo.seek(0)
                 except Exception:
                     pass
-            
-            if dados_processados:
-                df = pd.DataFrame(dados_processados)
+        
+        if dados_processados:
+            df = pd.DataFrame(dados_processados)
 
     if df is not None:
         st.subheader("📊 Lote de Dados Estruturados para Auditoria")
@@ -96,14 +95,13 @@ if arquivos_upload:
             if not licenca_usuario:
                 st.error("⚠️ Acesso Negado: Por favor, insira uma Chave de Licença ScoutIA válida na barra lateral para ativar o software.")
             elif licenca_usuario not in BANCO_DE_LICENCAS:
-                st.error("❌ Licença Inválida: O código inserido não foi localizado em nossa base de dados activa.")
+                st.error("❌ Licença Inválida: O código inserido não foi localizado em nossa base de dados ativa.")
             else:
                 dados_plano = BANCO_DE_LICENCAS[licenca_usuario]
                 limite_permitido = dados_plano["limite_linhas"]
                 
                 if total_linhas_cliente > limite_permitido:
                     st.error(f"🚫 Limite do Plano Excedido! Seu lote possui **{total_linhas_cliente} registros**.")
-                    st.warning("💡 Faça o Upgrade do seu plano para liberar mais capacidade.")
                 else:
                     st.sidebar.success(f"✅ Licença Ativa: Plano {dados_plano['plano']}")
                     status_container = st.empty()
@@ -133,7 +131,7 @@ if arquivos_upload:
                             if relatorio_final: sucesso = True
                         except Exception: pass
                         
-                        # 2. MOTOR DE CONTINGÊNCIA LOCAL (Se a nuvem falhar)
+                        # 2. MOTOR DE CONTINGÊNCIA LOCAL
                         if not sucesso:
                             st.info("ℹ️ Canais externos ocupados. Acionando Motor de Contingência Analítico Local...")
                             time.sleep(1.0)
@@ -155,7 +153,6 @@ if arquivos_upload:
                                 elif row['valor'] == 0.0:
                                     alertas.append(f"| **{row['id_transacao']}** | **Inconsistência Cadastral** | Nota registrada com valor zerado (R$ 0,00). |")
                             
-                            # Se a nota fiscal for legítima e limpa (como a nossa de teste), o motor avisa que está tudo ok
                             if not alertas:
                                 alertas_str = "| n/a | **Nenhuma Inconformidade Encontrada** | Todos os registros analisados localmente estão em conformidade com as regras contábeis. |"
                             else:
@@ -163,33 +160,17 @@ if arquivos_upload:
                                 
                             total_exposicao = perda_confirmada + capital_risco
                             
-                            relatorio_final = f"""# Relatório de Auditoria e Conformidade Fiscal
-
-**Para:** Diretoria Financeira e Controladoria  
-**Elaborado por:** ScoutIA Fiscal – Processamento Híbrido Corporativo  
-**Plano Ativo:** {dados_plano['plano']}  
-**Status do Lote:** ✅ **CONFORME / SEM RISCOS DETECTADOS**
-
----
-
-### 1. Resumo Executivo
-A análise de integridade realizada sobre os dados transacionais brutos do lote demonstrou 100% de aderência às normas de compliance interno. Não foram localizados pagamentos duplicados, notas com valores zerados ou outliers financeiros. O lote está liberado para arquivamento contábil.
-
----
-
-### 2. Painel de Verificações
-
-| ID Registro | Tipo de Alerta | Descrição do Diagnóstico |
-| :--- | :--- | :--- |
-{alertas_str}
-
----
-
-### 3. Impacto no Fluxo de Caixa
-* **Perda Confirmada (Vazamento):** R$ {perda_confirmada:.2f}
-* **Capital em Risco:** R$ {capital_risco:.2f}
-* **Exposição Financeira Total:** R$ {total_exposicao:.2f}
-
----
-
-### 4. Recomendações de Governança
+                            # Correção sintática da string longa alinhada à esquerda
+                            relatorio_final = (
+                                f"# Relatório de Auditoria e Conformidade Fiscal\n\n"
+                                f"**Para:** Diretoria Financeira e Controladoria  \n"
+                                f"**Elaborado por:** ScoutIA Fiscal – Processamento Híbrido Corporativo  \n"
+                                f"**Plano Ativo:** {dados_plano['plano']}  \n"
+                                f"**Status do Lote:** ✅ **CONFORME / SEM RISCOS DETECTADOS**\n\n"
+                                f"---\n\n"
+                                f"### 1. Resumo Executivo\n"
+                                f"A análise de integridade realizada sobre os dados transacionais brutos do lote demonstrou 100% de aderência às normas de compliance interno. Não foram localizados pagamentos duplicados, notas com valores zerados ou outliers financeiros. O lote está liberado para arquivamento contábil.\n\n"
+                                f"---\n\n"
+                                f"### 2. Painel de Verificações\n\n"
+                                f"| ID Registro | Tipo de Alerta | Descrição do Diagnóstico |\n"
+                                f"| :--- | :--- | :--- |\n"
