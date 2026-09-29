@@ -116,7 +116,7 @@ if df is not None:
     media_por_fornecedor = df.groupby('CNPJ_Emitente')['Valor_Total'].transform('mean')
     desvio_por_fornecedor = df.groupby('CNPJ_Emitente')['Valor_Total'].transform('std').fillna(0)
     # Alerta se o valor for maior que a média + 2 desvios padrões (regra estatística clássica)
-    superfaturadas = df[df['Valor_Total'] > (media_por_fornecedor + (2 * desvio_por_fornecedor)) & (df['Valor_Total'] > 5000)]
+    superfaturadas = df[(df['Valor_Total'] > (media_por_fornecedor + (2 * desvio_por_fornecedor))) & (df['Valor_Total'] > 5000)]
 
     # Exibição dos alertas na tela para o auditor humano
     col1, col2 = st.columns(2)
