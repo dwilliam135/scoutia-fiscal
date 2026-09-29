@@ -38,7 +38,13 @@ if arquivo_upload is not None:
                 status_container = st.empty()
                 
                 with st.spinner("O ScoutIA está realizando uma varredura profunda... Aguarde."):
-                    client = genai.Client(api_key=chave_final)
+                    # MELHORIA DE INFRAESTRUTURA: Forçamos o cliente a rodar na rota estável 'v1'
+                    # Isso desvia o tráfego do servidor v1beta congestionado do Google
+                    client = genai.Client(
+                        api_key=chave_final,
+                        http_options=types.HttpOptions(api_version='v1')
+                    )
+                    
                     dados_em_texto = df.to_markdown(index=False)
                     
                     prompt_sistema = (
@@ -51,11 +57,9 @@ if arquivo_upload is not None:
                         f"Alertas Críticos com IDs, Impacto Financeiro e Plano de Ação:\n\n{dados_em_texto}"
                     )
                     
-                    # Esteira de modelos prioritários
+                    # Rota de modelos disponíveis nos canais de produção
                     esteira_modelos = ['gemini-3.8-flash', 'gemini-2.0-flash', 'gemini-1.5-flash']
-                    
-                    # MELHORIA: Aumentamos para 6 tentativas por modelo para insistir mais
-                    max_tentativas_por_modelo = 6
+                    max_tentativas_por_modelo = 5
                     sucesso = False
                     relatorio_texto = ""
 
@@ -63,11 +67,10 @@ if arquivo_upload is not None:
                         if sucesso:
                             break
                         
-                        # Tempo base inicial de espera aumentado para 3 segundos
-                        backoff = 3.0 
+                        backoff = 2.0 
                         
                         for tentativa in range(max_tentativas_por_modelo):
-                            status_container.info(f"🔄 Conectando via {modelo} (Tentativa {tentativa + 1}/{max_tentativas_por_modelo})...")
+                            status_container.info(f"🔄 Conectando via Rota Estável v1 ({modelo} - Tentativa {tentativa + 1}/{max_tentativas_por_modelo})...")
                             try:
                                 response = client.models.generate_content(
                                     model=modelo,
@@ -80,13 +83,11 @@ if arquivo_upload is not None:
                             except Exception as e:
                                 erro_str = str(e)
                                 if "503" in erro_str or "UNAVAILABLE" in erro_str or "ResourceExhausted" in erro_str:
-                                    # MELHORIA: Backoff Exponencial + Jitter (fator aleatório de milissegundos)
-                                    tempo_espera = backoff + random.uniform(0, 1.5)
-                                    status_container.warning(f"⚠️ Servidor instável. Aguardando {tempo_espera:.1f}s para insistir...")
+                                    tempo_espera = backoff + random.uniform(0, 1.0)
+                                    status_container.warning(f"⚠️ Rota ocupada. Insistindo em {tempo_espera:.1f}s...")
                                     time.sleep(tempo_espera)
-                                    backoff *= 2.0 # Dobra o tempo base para a próxima falha
+                                    backoff *= 2.0
                                 else:
-                                    # Se for outro erro (como chave inválida), muda de modelo imediatamente
                                     break
                                     
                     status_container.empty()
@@ -96,7 +97,7 @@ if arquivo_upload is not None:
                         st.subheader("📋 Relatório Final de Auditoria e Conformidade")
                         st.markdown(relatorio_texto)
                     else:
-                        st.error("Erro Crítico de Infraestrutura: Todos os servidores do Google AI Studio estão sob tráfego extremo global. Deixamos o sistema insistindo ao máximo, mas a fila do Google travou. Aguarde 1 minuto e clique novamente.")
+                        st.error("Erro Crítico de Infraestrutura: Todos os servidores da rota v1 e v1beta falharam. Tente novamente em instantes.")
                         
     except Exception as e:
         st.error(f"Erro ao processar o arquivo: {str(e)}")
