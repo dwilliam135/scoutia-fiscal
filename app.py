@@ -11,7 +11,7 @@ from google import genai
 st.set_page_config(page_title="ScoutIA Fiscal", page_icon="🛡️", layout="wide")
 
 st.title("🛡️ ScoutIA Fiscal — Auditoria Sênior & Compliance")
-st.markdown("Suba seus relatórios financeiros (**CSV**) ou suas **Notas Fiscais (múltiplos XMLs)** para auditoria instantânea por Inteligência Artificial.")
+st.markdown("Suba seus relatórios financeiros (**CSV**) or suas **Notas Fiscais (múltiplos XMLs)** para auditoria instantânea por Inteligência Artificial.")
 
 # --- BANCO DE DADOS DE LICENÇAS COMERCIAIS ---
 BANCO_DE_LICENCAS = {
@@ -35,7 +35,7 @@ nome_arquivo_log = ""
 if arquivos_upload:
     dados_processados = []
     
-    # Processamos o primeiro arquivo de forma segura
+    # Coleta segura do primeiro arquivo para identificar o tipo do lote
     primeiro_arquivo = arquivos_upload[0]
     
     if primeiro_arquivo.name.endswith('.csv'):
@@ -57,7 +57,7 @@ if arquivos_upload:
                     
                     for elem in root.iter():
                         if '}' in elem.tag:
-                            elem.tag = elem.tag.split('}', 1)
+                            elem.tag = elem.tag.split('}', 1)[1]
                             
                     id_nota = root.find('.//chNFe')
                     id_nota = id_nota.text if id_nota is not None else root.find('.//nNF').text if root.find('.//nNF') is not None else f"XML-{random.randint(1000,9999)}"
@@ -104,8 +104,6 @@ if arquivos_upload:
                     st.error(f"🚫 Limite do Plano Excedido! Seu lote possui **{total_linhas_cliente} registros**.")
                 else:
                     st.sidebar.success(f"✅ Licença Ativa: Plano {dados_plano['plano']}")
-                    
-                    # Usamos um container de status dinâmico para evitar travar a tela
                     status_container = st.empty()
                     sucesso = False
                     relatorio_final = ""
@@ -135,7 +133,6 @@ if arquivos_upload:
                         
                         # 2. MOTOR DE CONTINGÊNCIA LOCAL
                         if not sucesso:
-                            # Atualizamos a mensagem direto no container dinâmico
                             status_container.warning("ℹ️ Canais externos ocupados. Acionando Motor de Contingência Analítico Local...")
                             time.sleep(1.0)
                             
@@ -163,6 +160,7 @@ if arquivos_upload:
                                 
                             total_exposicao = perda_confirmada + capital_risco
                             
+                            # Formatação 100% blindada e alinhada à margem
                             relatorio_final = f"""# Relatório de Auditoria e Conformidade Fiscal
 
 **Para:** Diretoria Financeira e Controladoria  
@@ -194,3 +192,5 @@ A análise de integridade realizada sobre os dados transacionais brutos do lote 
 
 ### 4. Recomendações de Governança
 1. **Homologação do Lote:** Manter o fluxo de liquidação ativo para as transações validadas.
+2. **Monitoramento Contínuo:** Continuar subindo os lotes semanais no ScoutIA para travar possíveis duplicidades.
+"""
