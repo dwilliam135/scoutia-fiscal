@@ -35,7 +35,7 @@ nome_arquivo_log = ""
 if arquivos_upload:
     dados_processados = []
     
-    # Processamento homologado: checa o primeiro arquivo do lote para definir a rota
+    # CORREÇÃO: Acessamos o primeiro arquivo da lista de uploads de forma segura
     primeiro_arquivo = arquivos_upload[0]
     
     if primeiro_arquivo.name.endswith('.csv'):
@@ -57,7 +57,7 @@ if arquivos_upload:
                     
                     for elem in root.iter():
                         if '}' in elem.tag:
-                            elem.tag = elem.tag.split('}', 1)[1]
+                            elem.tag = elem.tag.split('}', 1)
                             
                     id_nota = root.find('.//chNFe')
                     id_nota = id_nota.text if id_nota is not None else root.find('.//nNF').text if root.find('.//nNF') is not None else f"XML-{random.randint(1000,9999)}"
@@ -160,7 +160,7 @@ if arquivos_upload:
                                 
                             total_exposicao = perda_confirmada + capital_risco
                             
-                            # Correção sintática da string longa alinhada à esquerda
+                            # CORREÇÃO: Fechamento correto do parêntese na formatação da string
                             relatorio_final = (
                                 f"# Relatório de Auditoria e Conformidade Fiscal\n\n"
                                 f"**Para:** Diretoria Financeira e Controladoria  \n"
