@@ -161,43 +161,61 @@ if df is not None:
         if not superfaturadas.empty:
             st.dataframe(superfaturadas[['Numero_NF', 'Nome_Emitente', 'Valor_Total']])
 
-           # --- DISPARO DA INTELIGÊNCIA ARTIFICIAL ---
+              # --- DISPARO DA INTELIGÊNCIA ARTIFICIAL CONECTADA E RESILIENTE ---
     if st.button("🛡️ Gerar Parecer Antifraude com ScoutIA"):
         if not client:
             st.error("Erro: A IA não pôde ser iniciada. Certifique-se de configurar a variável 'GEMINI_API_KEY' nas configurações (Secrets) do seu painel Streamlit.")
         else:
             with st.spinner("A IA está cruzando os indícios e redigindo o parecer técnico..."):
-                try:
-                    resumo_auditoria = {
-                        "total_transacoes_analisadas": len(df),
-                        "total_valor_movimentado": float(df['Valor_Total'].sum()),
-                        "casos_duplicidade_detectados": duplicadas.head(10).to_dict(orient='records'),
-                        "casos_desvio_valor_detectados": superfaturadas.head(10).to_dict(orient='records'),
-                        "maiores_gastos_por_categoria": df.groupby('Natureza_Operacao')['Valor_Total'].sum().nlargest(5).to_dict()
-                    }
-                    
-                    prompt_sistema = (
-                        "Você é um Perito Forense Digital e Auditor Fiscal Sênior especializado em Compliance e Prevenção a Fraudes. "
-                        "Analise o resumo dos dados de fechamento fornecidos. Seu papel é emitir um Relatório de Investigação Fiscal detalhado.\n\n"
-                        "Foque em apontar e explicar riscos de: \n"
-                        "1) Lançamentos Duplicados ou IDs idênticos com saídas iguais.\n"
-                        "2) Desvios Críticos de Valor (superfaturamento ou desvios em categorias específicas).\n"
-                        "3) Transações incomuns fora do padrão operacional médio.\n\n"
-                        "Seja extremamente formal, técnico e ofereça recomendações claras de governança e auditoria."
-                    )
-                    
-                    # ATUALIZADO: Usando o modelo atualizado recomendado pelo Google
-                    resposta = client.models.generate_content(
-                        model='gemini-3.8-flash',
-                        contents=f"Dados consolidados da pré-triagem do fechamento:\n\n{str(resumo_auditoria)}",
-                        config=types.GenerateContentConfig(
-                            system_instruction=prompt_sistema,
-                            temperature=0.1
+                
+                # Monta o payload consolidado
+                resumo_auditoria = {
+                    "total_transacoes_analisadas": len(df),
+                    "total_valor_movimentado": float(df['Valor_Total'].sum()),
+                    "casos_duplicidade_detectados": duplicadas.head(10).to_dict(orient='records'),
+                    "casos_desvio_valor_detectados": superfaturadas.head(10).to_dict(orient='records'),
+                    "maiores_gastos_por_categoria": df.groupby('Natureza_Operacao')['Valor_Total'].sum().nlargest(5).to_dict()
+                }
+                
+                prompt_sistema = (
+                    "Você é um Perito Forense Digital e Auditor Fiscal Sênior especializado em Compliance e Prevenção a Fraudes. "
+                    "Analise o resumo dos dados de fechamento fornecidos. Seu papel é emitir um Relatório de Investigação Fiscal detalhado.\n\n"
+                    "Foque em apontar e explicar riscos de: \n"
+                    "1) Lançamentos Duplicados ou IDs idênticos com saídas iguais.\n"
+                    "2) Desvios Críticos de Valor (superfaturamento ou desvios em categorias específicas).\n"
+                    "3) Transações incomuns fora do padrão operacional médio.\n\n"
+                    "Seja extremamente formal, técnico e ofereça recomendações claras de governança e auditoria."
+                )
+                
+                # Lista de modelos por ordem de prioridade (Plano A, B e C)
+                modelos_disponiveis = ['gemini-3.8-flash', 'gemini-2.5-pro', 'gemini-1.5-flash']
+                resposta = None
+                erro_acumulado = ""
+                
+                # Laço de tentativa e erro inteligente
+                for modelo_teste in modelos_disponiveis:
+                    try:
+                        resposta = client.models.generate_content(
+                            model=modelo_teste,
+                            contents=f"Dados consolidados da pré-triagem do fechamento:\n\n{str(resumo_auditoria)}",
+                            config=types.GenerateContentConfig(
+                                system_instruction=prompt_sistema,
+                                temperature=0.1
+                            )
                         )
-                    )
-                    
+                        # Se conseguir responder, interrompe o laço com sucesso
+                        if resposta and resposta.text:
+                            break
+                    except Exception as e:
+                        erro_acumulado += f" Falha no {modelo_teste}: {str(e)} |"
+                        continue
+                
+                # Verifica se conseguimos resposta de algum dos modelos
+                if resposta and resposta.text:
                     st.subheader("🛡️ Relatório Pericial Forense (ScoutIA)")
                     st.markdown(resposta.text)
-                    
-                except Exception as e:
-                    st.error(f"Erro interno ao processar a resposta da IA: {str(e)}. Verifique se a sua chave de API é válida e tem permissões para o modelo gemini-3.8-flash.")
+                else:
+                    st.error(
+                        f"Todos os servidores da IA do Google estão congestionados no momento devido à alta demanda global. "
+                        f"Detalhes técnicos: {erro_acumulado} Por favor, aguarde alguns segundos e clique no botão novamente."
+                    )
