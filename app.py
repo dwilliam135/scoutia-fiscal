@@ -161,13 +161,14 @@ if df is not None:
         if not superfaturadas.empty:
             st.dataframe(superfaturadas[['Numero_NF', 'Nome_Emitente', 'Valor_Total']])
 
-    # --- DISPARO DA INTELIGÊNCIA ARTIFICIAL ---
+        # --- DISPARO DA INTELIGÊNCIA ARTIFICIAL ---
     if st.button("🛡️ Gerar Parecer Antifraude com ScoutIA"):
         if not client:
             st.error("Erro: A IA não pôde ser iniciada. Certifique-se de configurar a variável 'GEMINI_API_KEY' nas configurações (Secrets) do seu painel Streamlit.")
         else:
             with st.spinner("A IA está cruzando os indícios e redigindo o parecer técnico..."):
                 try:
+                    # Garantindo que as conversões de tipo não quebrem e fechando os parênteses perfeitamente
                     resumo_auditoria = {
                         "total_transacoes_analisadas": len(df),
                         "total_valor_movimentado": float(df['Valor_Total'].sum()),
@@ -181,3 +182,24 @@ if df is not None:
                         "Analise o resumo dos dados de fechamento fornecidos. Seu papel é emitir um Relatório de Investigação Fiscal detalhado.\n\n"
                         "Foque em apontar e explicar riscos de: \n"
                         "1) Lançamentos Duplicados ou IDs idênticos com saídas iguais.\n"
+                        "2) Desvios Críticos de Valor (superfaturamento ou desvios em categorias específicas).\n"
+                        "3) Transações incomuns fora do padrão operacional médio.\n\n"
+                        "Seja extremamente formal, técnico e ofereça recomendações claras de governança e auditoria."
+                    )
+                    
+                    # Chamada oficial utilizando a sintaxe correta da SDK google-genai
+                    resposta = client.models.generate_content(
+                        model='gemini-2.5-flash',
+                        contents=f"Dados consolidados da pré-triagem do fechamento:\n\n{str(resumo_auditoria)}",
+                        config=types.GenerateContentConfig(
+                            system_instruction=prompt_sistema,
+                            temperature=0.1
+                        )
+                    )
+                    
+                    st.subheader("🛡️ Relatório Pericial Forense (ScoutIA)")
+                    st.markdown(resposta.text)
+                    
+                except Exception as e:
+                    st.error(f"Erro interno ao processar a resposta da IA: {str(e)}. Verifique se a sua chave de API é válida e tem permissões para o modelo gemini-2.5-flash.")
+
