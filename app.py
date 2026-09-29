@@ -11,7 +11,7 @@ from google import genai
 st.set_page_config(page_title="ScoutIA Fiscal", page_icon="🛡️", layout="wide")
 
 st.title("🛡️ ScoutIA Fiscal — Auditoria Sênior & Compliance")
-st.markdown("Suba seus relatórios financeiros (**CSV**) or suas **Notas Fiscais (múltiplos XMLs)** para auditoria instantânea por Inteligência Artificial.")
+st.markdown("Suba seus relatórios financeiros (**CSV**) ou suas **Notas Fiscais (múltiplos XMLs)** para auditoria instantânea por Inteligência Artificial.")
 
 # --- BANCO DE DADOS DE LICENÇAS COMERCIAIS ---
 BANCO_DE_LICENCAS = {
@@ -35,7 +35,7 @@ nome_arquivo_log = ""
 if arquivos_upload:
     dados_processados = []
     
-    # Coleta segura do primeiro arquivo para identificar o tipo do lote
+    # CORREÇÃO CRÍTICA: Acessamos o primeiro elemento da lista de forma segura [0]
     primeiro_arquivo = arquivos_upload[0]
     
     if primeiro_arquivo.name.endswith('.csv'):
@@ -160,7 +160,6 @@ if arquivos_upload:
                                 
                             total_exposicao = perda_confirmada + capital_risco
                             
-                            # Formatação 100% blindada e alinhada à margem
                             relatorio_final = f"""# Relatório de Auditoria e Conformidade Fiscal
 
 **Para:** Diretoria Financeira e Controladoria  
@@ -194,3 +193,5 @@ A análise de integridade realizada sobre os dados transacionais brutos do lote 
 1. **Homologação do Lote:** Manter o fluxo de liquidação ativo para as transações validadas.
 2. **Monitoramento Contínuo:** Continuar subindo os lotes semanais no ScoutIA para travar possíveis duplicidades.
 """
+                            sucesso = True
+                    
