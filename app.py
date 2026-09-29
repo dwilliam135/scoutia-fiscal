@@ -1,17 +1,16 @@
 import streamlit as st
 import pandas as pd
 import os
-import time
-import random
 import requests
 import xml.etree.ElementTree as ET
 from google import genai
+from google.genai import types
 
 # Configuração da página Web
 st.set_page_config(page_title="ScoutIA Fiscal", page_icon="🛡️", layout="wide")
 
-st.title("🛡️ ScoutIA Fiscal — Auditoria Sênior & Compliance")
-st.markdown("Suba seus relatórios financeiros (**CSV**) ou suas **Notas Fiscais (múltiplos XMLs)** para auditoria instantânea por Inteligência Artificial.")
+st.title("🛡️ ScoutIA Fiscal — Detecção de Fraudes e Fechamentos")
+st.markdown("Suba seus relatórios financeiros ou múltiplos XMLs para identificar **notas duplicadas, superfaturamento e notas fantasmas**.")
 
 # --- BANCO DE DADOS DE LICENÇAS COMERCIAIS ---
 BANCO_DE_LICENCAS = {
@@ -23,171 +22,152 @@ BANCO_DE_LICENCAS = {
 st.sidebar.subheader("🔑 Autenticação do Cliente")
 licenca_usuario = st.sidebar.text_input("Insira sua Chave de Licença ScoutIA:", type="password").strip()
 
-CHAVE_INTERNA_IA = os.environ.get("GEMINI_API_KEY", "AQ.Ab8RN6ITcrnd309KcEI_WnR8CQVamYFP6lE2lefUDPcVVYDtJQ")
+# Inicialização do Cliente Gemini
+CHAVE_INTERNA_IA = os.environ.get("GEMINI_API_KEY", "")
+if not CHAVE_INTERNA_IA:
+    CHAVE_INTERNA_IA = "SUA_GEMINI_API_KEY_AQUI" 
+
+client = None
+if CHAVE_INTERNA_IA and CHAVE_INTERNA_IA != "SUA_GEMINI_API_KEY_AQUI":
+    client = genai.Client(api_key=CHAVE_INTERNA_IA)
+
 WEBHOOK_MONITORAMENTO = "https://google.com"
 
-# Sistema de upload híbrido em lote
+# Upload de arquivos
 arquivos_upload = st.file_uploader("Escolha os relatórios CSV ou selecione múltiplas Notas Fiscais XML", type=["csv", "xml"], accept_multiple_files=True)
 
 df = None
 nome_arquivo_log = ""
 
-# CORREÇÃO DA LISTA: Acessamos o primeiro arquivo indexado se a lista não estiver vazia
 if arquivos_upload and len(arquivos_upload) > 0:
     dados_processados = []
-    primeiro_arquivo = arquivos_upload[0]
     
-    if primeiro_arquivo.name.endswith('.csv'):
+    # Se for um arquivo CSV único (relatório de fechamento)
+    if arquivos_upload[0].name.endswith('.csv'):
         try:
-            df = pd.read_csv(primeiro_arquivo)
-            nome_arquivo_log = primeiro_arquivo.name
+            df = pd.read_csv(arquivos_upload[0])
+            nome_arquivo_log = arquivos_upload[0].name
+            st.success(f"Relatório CSV '{nome_arquivo_log}' carregado. ({len(df)} registros)")
         except Exception as e:
             st.error(f"Erro ao ler o arquivo CSV: {str(e)}")
             
+    # Se forem múltiplos XMLs de Notas Fiscais
     else:
-        # Rota de processamento de múltiplos arquivos XML
-        nome_arquivo_log = f"{len(arquivos_upload)} Notas Fiscais XML"
-        
+        st.info(f"Processando {len(arquivos_upload)} arquivos XML...")
         for arquivo in arquivos_upload:
             if arquivo.name.endswith('.xml'):
                 try:
-                    conteudo_xml = arquivo.read()
-                    root = ET.fromstring(conteudo_xml)
+                    tree = ET.parse(arquivo)
+                    root = tree.getroot()
+                    ns = {'ns': 'http://portalfiscal.inf.br'}
                     
-                    for elem in root.iter():
-                        if '}' in elem.tag:
-                            elem.tag = elem.tag.split('}', 1)[1]
-                            
-                    id_nota = root.find('.//chNFe')
-                    id_nota = id_nota.text if id_nota is not None else root.find('.//nNF').text if root.find('.//nNF') is not None else f"XML-{random.randint(1000,9999)}"
+                    ide = root.find('.//ns:ide', ns)
+                    emit = root.find('.//ns:emit', ns)
+                    dest = root.find('.//ns:dest', ns)
+                    total = root.find('.//ns:total/ns:ICMSTot', ns)
                     
-                    data_emissao = root.find('.//dhEmi')
-                    data_emissao = data_emissao.text[:10] if data_emissao is not None else root.find('.//dEmi').text if root.find('.//dEmi') is not None else time.strftime("%Y-%m-%d")
-                    
-                    emitente = root.find('.//xNome')
-                    emitente = emitente.text if emitente is not None else "Fornecedor Não Identificado"
-                    
-                    valor_nota = root.find('.//vNF')
-                    valor_nota = float(valor_nota.text) if valor_nota is not None else 0.0
-                    
-                    dados_processados.append({
-                        'id_transacao': id_nota,
-                        'data': data_emissao,
-                        'descricao': f"Nota Fiscal: {emitente}",
-                        'categoria': 'Notas Recebidas',
-                        'valor': valor_nota,
-                        'status': 'Pago'
-                    })
-                    arquivo.seek(0)
-                except Exception:
-                    pass
+                    # Captura de chaves essenciais para cruzamento antifraude
+                    dados_nota = {
+                        "Chave_Acesso": root.find('.//ns:infNfe', ns).attrib.get('Id', '')[3:] if root.find('.//ns:infNfe', ns) is not None else "N/A",
+                        "Numero_NF": ide.find('ns:nNF', ns).text if ide is not None and ide.find('ns:nNF', ns) is not None else "N/A",
+                        "Data_Emissao": ide.find('ns:dhEmi', ns).text[:10] if ide is not None and ide.find('ns:dhEmi', ns) is not None else "N/A",
+                        "CNPJ_Emitente": emit.find('ns:CNPJ', ns).text if emit is not None and emit.find('ns:CNPJ', ns) is not None else "N/A",
+                        "Nome_Emitente": emit.find('ns:xNome', ns).text if emit is not None and emit.find('ns:xNome', ns) is not None else "N/A",
+                        "CNPJ_Destinatario": dest.find('ns:CNPJ', ns).text if dest is not None and dest.find('ns:CNPJ', ns) is not None else "N/A",
+                        "Valor_Total": float(total.find('ns:vNF', ns).text) if total is not None and total.find('ns:vNF', ns) is not None else 0.0,
+                        "Natureza_Operacao": ide.find('ns:natOp', ns).text if ide is not None and ide.find('ns:natOp', ns) is not None else "N/A"
+                    }
+                    dados_processados.append(dados_nota)
+                except Exception as e:
+                    st.warning(f"Erro ao processar o XML {arquivo.name}: {str(e)}")
         
         if dados_processados:
             df = pd.DataFrame(dados_processados)
+            nome_arquivo_log = f"Lote_XML_{len(dados_processados)}_notas.csv"
+            st.success(f"{len(df)} Notas Fiscais consolidadas com sucesso!")
 
-    if df is not None:
-        st.subheader("📊 Lote de Dados Estruturados para Auditoria")
-        st.dataframe(df, use_container_width=True)
-        total_linhas_cliente = len(df)
-        
-        if st.button("🚀 Iniciar Auditoria Avançada"):
-            if not licenca_usuario:
-                st.error("⚠️ Acesso Negado: Por favor, insira uma Chave de Licença ScoutIA válida na barra lateral para ativar o software.")
-            elif licenca_usuario not in BANCO_DE_LICENCAS:
-                st.error("❌ Licença Inválida: O código inserido não foi localizado em nossa base de dados ativa.")
-            else:
-                dados_plano = BANCO_DE_LICENCAS[licenca_usuario]
-                limite_permitido = dados_plano["limite_linhas"]
-                
-                if total_linhas_cliente > limite_permitido:
-                    st.error(f"🚫 Limite do Plano Excedido! Seu lote possui **{total_linhas_cliente} registros**.")
-                else:
-                    st.sidebar.success(f"✅ Licença Ativa: Plano {dados_plano['plano']}")
-                    status_container = st.empty()
-                    sucesso = False
-                    relatorio_final = ""
+# APLICAÇÃO DAS REGRAS DE AUDITORIA
+if df is not None:
+    # Ajuste de limite por plano comercial
+    if licenca_usuario in BANCO_DE_LICENCAS:
+        info_plano = BANCO_DE_LICENCAS[licenca_usuario]
+        limite = info_plano["limite_linhas"]
+        if len(df) > limite:
+            st.warning(f"Contrato {info_plano['plano']} limita a análise a {limite} linhas. Dados truncados.")
+            df = df.head(limite)
+    else:
+        st.sidebar.error("Modo Demonstração: Limitado a 10 registros.")
+        df = df.head(10)
+    
+    st.subheader("📋 Painel de Dados Consolidados")
+    st.dataframe(df)
+
+    # --- MOTOR DE PRÉ-AUDITORIA DETECTIVA (PANDAS) ---
+    st.subheader("🔍 Triagem Automatizada de Riscos")
+    
+    # 1. Detecção de Notas Duplicadas (Mesmo Emitente, Número e Valor)
+    # Garante a conversão correta para evitar erros de tipo
+    df['Numero_NF'] = df['Numero_NF'].astype(str)
+    df['CNPJ_Emitente'] = df['CNPJ_Emitente'].astype(str)
+    
+    duplicadas = df[df.duplicated(subset=['Numero_NF', 'CNPJ_Emitente', 'Valor_Total'], keep=False)]
+    
+    # 2. Desvios e Possível Superfaturamento (Notas com valores muito acima da média do mesmo fornecedor)
+    media_por_fornecedor = df.groupby('CNPJ_Emitente')['Valor_Total'].transform('mean')
+    desvio_por_fornecedor = df.groupby('CNPJ_Emitente')['Valor_Total'].transform('std').fillna(0)
+    # Alerta se o valor for maior que a média + 2 desvios padrões (regra estatística clássica)
+    superfaturadas = df[df['Valor_Total'] > (media_por_fornecedor + (2 * desvio_por_fornecedor)) & (df['Valor_Total'] > 5000)]
+
+    # Exibição dos alertas na tela para o auditor humano
+    col1, col2 = st.columns(2)
+    with col1:
+        st.metric("Suspeitas de Duplicidade", len(duplicadas))
+        if not duplicadas.empty:
+            st.dataframe(duplicadas[['Numero_NF', 'Nome_Emitente', 'Valor_Total']])
+            
+    with col2:
+        st.metric("Suspeitas de Superfaturamento", len(superfaturadas))
+        if not superfaturadas.empty:
+            st.dataframe(superfaturadas[['Numero_NF', 'Nome_Emitente', 'Valor_Total']])
+
+    # --- DISPARO DA INTELIGÊNCIA ARTIFICIAL ---
+    if st.button("🛡️ Gerar Parecer Antifraude com ScoutIA"):
+        if not client:
+            st.error("Erro: API Key do Gemini não configurada.")
+        else:
+            with st.spinner("A IA está cruzando os indícios e redigindo o parecer técnico..."):
+                try:
+                    # Criamos um resumo estruturado para enviar para a IA. 
+                    # Isso evita enviar milhares de linhas cruas e foca apenas no que importa.
+                    resumo_auditoria = {
+                        "total_registros_analisados": len(df),
+                        "total_valor_movimentado": float(df['Valor_Total'].sum()),
+                        "casos_duplicidade_detectados": duplicadas.to_dict(orient='records'),
+                        "casos_desvio_valor_detectados": superfaturadas.to_dict(orient='records'),
+                        "principais_fornecedores": df.groupby('Nome_Emitente')['Valor_Total'].sum().nlargest(5).to_dict()
+                    }
                     
-                    try:
-                        dados_uso = {
-                            "licenca": licenca_usuario,
-                            "plano": dados_plano["plano"],
-                            "linhas_processadas": total_linhas_cliente,
-                            "arquivo": nome_arquivo_log,
-                            "timestamp": time.strftime("%Y-%m-%d %H:%M:%S")
-                        }
-                        requests.post(WEBHOOK_MONITORAMENTO, json=dados_uso, timeout=2)
-                    except Exception: pass
-
-                    with st.spinner("Analisando os registros do lote..."):
-                        # 1. TENTATIVA VIA NUVEM
-                        try:
-                            client = genai.Client(api_key=CHAVE_INTERNA_IA)
-                            dados_em_texto = df.to_markdown(index=False)
-                            prompt_completo = f"Analise a tabela e gere um relatório detalhado de auditoria contendo Resumo Executivo, Alertas Críticos, Impacto Financeiro e Plano de Ação:\n\n{dados_em_texto}"
-                            
-                            response = client.models.generate_content(model='gemini-3.8-flash', contents=prompt_completo)
-                            relatorio_final = response.text
-                            if relatorio_final: sucesso = True
-                        except Exception: pass
-                        
-                        # 2. MOTOR DE CONTINGÊNCIA LOCAL
-                        if not sucesso:
-                            status_container.warning("ℹ️ Canais externos ocupados. Acionando Motor de Contingência Analítico Local...")
-                            time.sleep(1.0)
-                            
-                            duplicados = df[df.duplicated(subset=['data', 'descricao', 'valor'], keep=False)]
-                            ids_duplicados = duplicados['id_transacao'].tolist()
-                            alertas = []
-                            perda_confirmada = 0.0
-                            capital_risco = 0.0
-                            
-                            if len(ids_duplicados) >= 2:
-                                alertas.append(f"| **{', '.join(map(str, ids_duplicados))}** | **Pagamento Duplicado (Confirmado)** | O lote apresenta duplicidade evidente de liquidação financeira. |")
-                                perda_confirmada += df[df.duplicated(subset=['data', 'descricao', 'valor'])]['valor'].sum()
-                            
-                            for idx, row in df.iterrows():
-                                if row['valor'] > 50000.0:
-                                    alertas.append(f"| **{row['id_transacao']}** | **Anomalia Crítica / Outlier** | Lançamento atípico de R$ {row['valor']:.2f} com alto risco. |")
-                                    if row['status'] == 'Pendente': capital_risco += row['valor']
-                                elif row['valor'] == 0.0:
-                                    alertas.append(f"| **{row['id_transacao']}** | **Inconsistência Cadastral** | Nota registrada com valor zerado (R$ 0,00). |")
-                            
-                            if not alertas:
-                                alertas_str = "| n/a | **Nenhuma Inconformidade Encontrada** | Todos os registros analisados localmente estão em conformidade com as regras contábeis. |"
-                            else:
-                                alertas_str = "\n".join(alertas)
-                                
-                            total_exposicao = perda_confirmada + capital_risco
-                            
-                            # RESOLUÇÃO DA SINTAXE: Aspas triplas alinhadas estritamente na margem esquerda (sem parênteses)
-                            relatorio_final = f"""# Relatório de Auditoria e Conformidade Fiscal
-
-**Para:** Diretoria Financeira e Controladoria  
-**Elaborado por:** ScoutIA Fiscal – Processamento Híbrido Corporativo  
-**Plano Ativo:** {dados_plano['plano']}  
-**Status do Lote:** ✅ **CONFORME / SEM RISCOS DETECTADOS**
-
----
-
-### 1. Resumo Executivo
-A análise de integridade realizada sobre os dados transacionais brutos do lote demonstrou 100% de aderência às normas de compliance interno. Não foram localizados pagamentos duplicados, notas com valores zerados ou outliers financeiros. O lote está liberado para arquivamento contábil.
-
----
-
-### 2. Painel de Verificações
-
-| ID Registro | Tipo de Alerta | Descrição do Diagnóstico |
-| :--- | :--- | :--- |
-{alertas_str}
-
----
-
-### 3. Impacto no Fluxo de Caixa
-* **Perda Confirmada (Vazamento):** R$ {perda_confirmada:.2f}
-* **Capital em Risco:** R$ {capital_risco:.2f}
-* **Exposição Financeira Total:** R$ {total_exposicao:.2f}
-
----
-
-### 4. Recomendações de Governança
-1. **Homologação do Lote:** Manter o fluxo de liquidação ativo para as transações validadas.
+                    prompt_sistema = (
+                        "Você é um Perito Forense Digital e Auditor Fiscal Sênior especializado em Compliance e Prevenção a Fraudes. "
+                        "Analise o resumo dos dados de fechamento fornecidos. Seu papel é emitir um Relatório de Investigação Fiscal detalhado. "
+                        "Foque em apontar riscos de: \n"
+                        "1) Notas Fiscais Duplicadas (fraude de duplo pagamento).\n"
+                        "2) Notas com indícios de Superfaturamento (valores discrepantes para o mesmo fornecedor).\n"
+                        "3) Risco de Notas Fantasmas (ex: volumes financeiros incompatíveis, fornecedores desconhecidos concentrando muito valor).\n\n"
+                        "Seja extremamente formal, contundente e aponte recomendações de auditoria interna para cada inconsistência."
+                    )
+                    
+                    resposta = client.models.generate_content(
+                        model='gemini-2.5-flash',
+                        contents=f"Dados consolidados da pré-triagem:\n\n{str(resumo_auditoria)}",
+                        config=types.GenerateContentConfig(
+                            system_instruction=prompt_sistema,
+                            temperature=0.1 # Resposta puramente factual e analítica
+                        )
+                    )
+                    
+                    st.subheader("🛡️ Relatório Pericial Forense (ScoutIA)")
+                    st.markdown(resposta.text)
+                    
+                except Exception as e:
+                    st.error(f"Erro na comunicação com o cérebro da IA: {str(e)}")
