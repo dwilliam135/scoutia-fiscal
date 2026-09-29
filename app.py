@@ -35,7 +35,7 @@ nome_arquivo_log = ""
 if arquivos_upload:
     dados_processados = []
     
-    # Pegamos o primeiro arquivo da lista de uploads de forma segura utilizando índice posicional
+    # CORREÇÃO DEFINITIVA: Extraímos o primeiro arquivo indexado na lista com segurança
     primeiro_arquivo = arquivos_upload[0]
     
     if primeiro_arquivo.name.endswith('.csv'):
@@ -46,7 +46,7 @@ if arquivos_upload:
             st.error(f"Erro ao ler o arquivo CSV: {str(e)}")
             
     else:
-        # Rota de processamento e conversão de múltiplos arquivos XML para formato de tabela
+        # Rota de processamento e conversão de múltiplos arquivos XML
         nome_arquivo_log = f"{len(arquivos_upload)} Notas Fiscais XML"
         
         for arquivo in arquivos_upload:
@@ -193,3 +193,4 @@ A análise de integridade realizada sobre os dados transacionais brutos do lote 
 1. **Homologação do Lote:** Manter o fluxo de liquidação ativo para as transações validadas.
 2. **Monitoramento Contínuo:** Continuar subindo os lotes semanais no ScoutIA para travar possíveis duplicidades.
 """
+                            sucesso = True
