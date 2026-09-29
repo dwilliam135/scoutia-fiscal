@@ -35,13 +35,11 @@ nome_arquivo_log = ""
 if arquivos_upload:
     dados_processados = []
     
-    # CORREÇÃO DEFINITIVA: Extraímos o primeiro arquivo indexado na lista com segurança
-    primeiro_arquivo = arquivos_upload[0]
-    
-    if primeiro_arquivo.name.endswith('.csv'):
+    # CORREÇÃO DEFINITIVA: Checamos a extensão do primeiro arquivo da lista com segurança
+    if arquivos_upload[0].name.endswith('.csv'):
         try:
-            df = pd.read_csv(primeiro_arquivo)
-            nome_arquivo_log = primeiro_arquivo.name
+            df = pd.read_csv(arquivos_upload[0])
+            nome_arquivo_log = arquivos_upload[0].name
         except Exception as e:
             st.error(f"Erro ao ler o arquivo CSV: {str(e)}")
             
@@ -194,3 +192,4 @@ A análise de integridade realizada sobre os dados transacionais brutos do lote 
 2. **Monitoramento Contínuo:** Continuar subindo os lotes semanais no ScoutIA para travar possíveis duplicidades.
 """
                             sucesso = True
+                    
