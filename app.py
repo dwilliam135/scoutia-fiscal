@@ -32,10 +32,9 @@ arquivos_upload = st.file_uploader("Escolha os relatórios CSV ou selecione múl
 df = None
 nome_arquivo_log = ""
 
+# CORREÇÃO DA LISTA: Acessamos o primeiro arquivo indexado se a lista não estiver vazia
 if arquivos_upload and len(arquivos_upload) > 0:
     dados_processados = []
-    
-    # CORREÇÃO DA LISTA: Acessamos de forma homologada o primeiro arquivo da lista ([0])
     primeiro_arquivo = arquivos_upload[0]
     
     if primeiro_arquivo.name.endswith('.csv'):
@@ -46,7 +45,7 @@ if arquivos_upload and len(arquivos_upload) > 0:
             st.error(f"Erro ao ler o arquivo CSV: {str(e)}")
             
     else:
-        # Rota de processamento e conversão de múltiplos arquivos XML para formato de tabela
+        # Rota de processamento de múltiplos arquivos XML
         nome_arquivo_log = f"{len(arquivos_upload)} Notas Fiscais XML"
         
         for arquivo in arquivos_upload:
@@ -57,7 +56,7 @@ if arquivos_upload and len(arquivos_upload) > 0:
                     
                     for elem in root.iter():
                         if '}' in elem.tag:
-                            elem.tag = elem.tag.split('}', 1)
+                            elem.tag = elem.tag.split('}', 1)[1]
                             
                     id_nota = root.find('.//chNFe')
                     id_nota = id_nota.text if id_nota is not None else root.find('.//nNF').text if root.find('.//nNF') is not None else f"XML-{random.randint(1000,9999)}"
@@ -160,15 +159,35 @@ if arquivos_upload and len(arquivos_upload) > 0:
                                 
                             total_exposicao = perda_confirmada + capital_risco
                             
-                            # CORREÇÃO BLINDADA: Concatenação linear em parênteses. Remove 100% os riscos de SyntaxError por indentação
-                            relatorio_final = (
-                                "# Relatório de Auditoria e Conformidade Fiscal\n\n"
-                                "**Para:** Diretoria Financeira e Controladoria  \n"
-                                "**Elaborado por:** ScoutIA Fiscal – Processamento Híbrido Corporativo  \n"
-                                f"**Plano Ativo:** {dados_plano['plano']}  \n"
-                                "**Status do Lote:** ✅ **CONFORME / SEM RISCOS DETECTADOS**\n\n"
-                                "---\n\n"
-                                "### 1. Resumo Executivo\n"
-                                "A análise de integridade realizada sobre os dados transacionais brutos do lote demonstrou 100% de aderência às normas de compliance interno. Não foram localizados pagamentos duplicados, notas com valores zerados ou outliers financeiros. O lote está liberado para arquivamento contábil.\n\n"
-                                "---\n\n"
-                                "### 2. Painel de Verificações\n\n"
+                            # RESOLUÇÃO DA SINTAXE: Aspas triplas alinhadas estritamente na margem esquerda (sem parênteses)
+                            relatorio_final = f"""# Relatório de Auditoria e Conformidade Fiscal
+
+**Para:** Diretoria Financeira e Controladoria  
+**Elaborado por:** ScoutIA Fiscal – Processamento Híbrido Corporativo  
+**Plano Ativo:** {dados_plano['plano']}  
+**Status do Lote:** ✅ **CONFORME / SEM RISCOS DETECTADOS**
+
+---
+
+### 1. Resumo Executivo
+A análise de integridade realizada sobre os dados transacionais brutos do lote demonstrou 100% de aderência às normas de compliance interno. Não foram localizados pagamentos duplicados, notas com valores zerados ou outliers financeiros. O lote está liberado para arquivamento contábil.
+
+---
+
+### 2. Painel de Verificações
+
+| ID Registro | Tipo de Alerta | Descrição do Diagnóstico |
+| :--- | :--- | :--- |
+{alertas_str}
+
+---
+
+### 3. Impacto no Fluxo de Caixa
+* **Perda Confirmada (Vazamento):** R$ {perda_confirmada:.2f}
+* **Capital em Risco:** R$ {capital_risco:.2f}
+* **Exposição Financeira Total:** R$ {total_exposicao:.2f}
+
+---
+
+### 4. Recomendações de Governança
+1. **Homologação do Lote:** Manter o fluxo de liquidação ativo para as transações validadas.
