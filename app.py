@@ -166,7 +166,7 @@ if arquivos_upload:
                         except Exception: pass
                         
                         # Motor de Contingência Analítico Local
-                        if not延sucesso:
+                        if not sucesso:
                             status_container.warning("⚠️ Canais externos ocupados. Acionando Motor de Contingência Analítico Local...")
                             time.sleep(1.0)
                             
