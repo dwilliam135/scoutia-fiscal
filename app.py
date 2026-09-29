@@ -35,7 +35,7 @@ nome_arquivo_log = ""
 if arquivos_upload:
     dados_processados = []
     
-    # CORREÇÃO: Acessamos o primeiro arquivo da lista de uploads de forma segura
+    # Processamos o primeiro arquivo de forma segura
     primeiro_arquivo = arquivos_upload[0]
     
     if primeiro_arquivo.name.endswith('.csv'):
@@ -57,7 +57,7 @@ if arquivos_upload:
                     
                     for elem in root.iter():
                         if '}' in elem.tag:
-                            elem.tag = elem.tag.split('}', 1)
+                            elem.tag = elem.tag.split('}', 1)[1]
                             
                     id_nota = root.find('.//chNFe')
                     id_nota = id_nota.text if id_nota is not None else root.find('.//nNF').text if root.find('.//nNF') is not None else f"XML-{random.randint(1000,9999)}"
@@ -160,17 +160,37 @@ if arquivos_upload:
                                 
                             total_exposicao = perda_confirmada + capital_risco
                             
-                            # CORREÇÃO: Fechamento correto do parêntese na formatação da string
-                            relatorio_final = (
-                                f"# Relatório de Auditoria e Conformidade Fiscal\n\n"
-                                f"**Para:** Diretoria Financeira e Controladoria  \n"
-                                f"**Elaborado por:** ScoutIA Fiscal – Processamento Híbrido Corporativo  \n"
-                                f"**Plano Ativo:** {dados_plano['plano']}  \n"
-                                f"**Status do Lote:** ✅ **CONFORME / SEM RISCOS DETECTADOS**\n\n"
-                                f"---\n\n"
-                                f"### 1. Resumo Executivo\n"
-                                f"A análise de integridade realizada sobre os dados transacionais brutos do lote demonstrou 100% de aderência às normas de compliance interno. Não foram localizados pagamentos duplicados, notas com valores zerados ou outliers financeiros. O lote está liberado para arquivamento contábil.\n\n"
-                                f"---\n\n"
-                                f"### 2. Painel de Verificações\n\n"
-                                f"| ID Registro | Tipo de Alerta | Descrição do Diagnóstico |\n"
-                                f"| :--- | :--- | :--- |\n"
+                            # Correção sintática definitiva utilizando aspas triplas limpas e sem parênteses
+                            relatorio_final = f"""# Relatório de Auditoria e Conformidade Fiscal
+
+**Para:** Diretoria Financeira e Controladoria  
+**Elaborado por:** ScoutIA Fiscal – Processamento Híbrido Corporativo  
+**Plano Ativo:** {dados_plano['plano']}  
+**Status do Lote:** ✅ **CONFORME / SEM RISCOS DETECTADOS**
+
+---
+
+### 1. Resumo Executivo
+A análise de integridade realizada sobre os dados transacionais brutos do lote demonstrou 100% de aderência às normas de compliance interno. Não foram localizados pagamentos duplicados, notas com valores zerados ou outliers financeiros. O lote está liberado para arquivamento contábil.
+
+---
+
+### 2. Painel de Verificações
+
+| ID Registro | Tipo de Alerta | Descrição do Diagnóstico |
+| :--- | :--- | :--- |
+{alertas_str}
+
+---
+
+### 3. Impacto no Fluxo de Caixa
+* **Perda Confirmada (Vazamento):** R$ {perda_confirmada:.2f}
+* **Capital em Risco:** R$ {capital_risco:.2f}
+* **Exposição Financeira Total:** R$ {total_exposicao:.2f}
+
+---
+
+### 4. Recomendações de Governança
+1. **Homologação do Lote:** Manter o fluxo de liquidação ativo para as transações validadas.
+2. **Monitoramento Contínuo:** Continuar subindo os lotes semanais no ScoutIA para travar possíveis duplicidades.
+"""
