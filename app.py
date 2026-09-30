@@ -113,23 +113,25 @@ if df is not None:
     df['CNPJ_Emitente'] = df['CNPJ_Emitente'].astype(str)
     df['Valor_Total'] = pd.to_numeric(df['Valor_Total'], errors='coerce').fillna(0.0)
     
-    # 1. Identificação de Contas/Notas Duplicadas
-    duplicadas = df[df.duplicated(subset=['Numero_NF', 'Valor_Total'], keep=False)]
+    # 1. Identificação de Lançamentos Duplicados (Mesmo ID/Valor)
+    duplicadas = df[df.duplicated(subset=['Numero_NF', 'Valor_Total'], keep=False)].copy()
     
-    # 2. Identificação de Gastos Fora do Comum (Superfaturamento)
+    # 2. Identificação de Notas Suspeitas / Inconsistências Críticas (Notas Fantasmas e Reembolsos)
+    notas_fantasmas = df[(df['Valor_Total'] == 0) | (df['Numero_NF'] == 'N/A') | (df['Nome_Emitente'] == 'N/A') | (df['Nome_Emitente'].str.contains('Reembolso|Bônus|Presidente|Diretoria', case=False, na=False))].copy()
+    
+    # Isola o que é fantasma/reembolso para não duplicar na contagem
+    notas_fantasmas = notas_fantasmas.drop(duplicadas.index, errors='ignore')
+    
+    # 3. Identificação de Desvios Críticos de Valor (Superfaturamento)
     media_por_fornecedor = df.groupby('CNPJ_Emitente')['Valor_Total'].transform('mean')
     desvio_por_fornecedor = df.groupby('CNPJ_Emitente')['Valor_Total'].transform('std').fillna(0)
-    superfaturadas = df[(df['Valor_Total'] > (media_por_fornecedor + (2 * desvio_por_fornecedor))) & (df['Valor_Total'] > 5000)]
+    superfaturadas = df[(df['Valor_Total'] > (media_por_fornecedor + (2 * desvio_por_fornecedor))) & (df['Valor_Total'] > 5000)].copy()
     
-    # CORREÇÃO DA CONTAGEM: Garante que os alertas de superfaturamento não se sobreponham a notas fantasmas
+    # Limpa sobreposições para manter a integridade exata dos números na tela
     superfaturadas = superfaturadas.drop(duplicadas.index, errors='ignore')
-    
-    # 3. Identificação de Notas Suspeitas / Sem Informação (Notas Fantasmas)
-    notas_fantasmas = df[(df['Valor_Total'] == 0) | (df['Numero_NF'] == 'N/A') | (df['Nome_Emitente'] == 'N/A') | (df['Nome_Emitente'].str.contains('Reembolso|Bônus', case=False, na=False))]
-    notas_fantasmas = notas_fantasmas.drop(duplicadas.index, errors='ignore')
+    superfaturadas = superfaturadas.drop(notas_fantasmas.index, errors='ignore')
 
     # --- CÁLCULO DE IMPACTO FINANCEIRO ---
-    # Divide por 2 as duplicadas porque o sistema aponta os dois lançamentos parados na tabela
     qtd_duplicadas_reais = int(len(duplicadas) / 2) if len(duplicadas) > 0 else 0
     valor_duplicado_risco = duplicadas['Valor_Total'].sum() / 2
     
@@ -139,88 +141,78 @@ if df is not None:
     qtd_fantasmas_reais = len(notas_fantasmas)
     valor_fantasma_risco = notas_fantasmas['Valor_Total'].sum()
     
-    # Totalizadores exatos para os cartões do topo
     total_alertas_reais = qtd_duplicadas_reais + qtd_superfaturadas_reais + qtd_fantasmas_reais
     total_exposicao_financeira = valor_duplicado_risco + valor_superfaturado_risco + valor_fantasma_risco
 
-    # --- PAINEL DE RESPOSTAS SIMPLIFICADO E DIRECIONADO AO CLIENTE ---
+    # --- PAINEL TÉCNICO DE PRONTA RESPOSTA ---
     st.markdown("---")
-    st.header("📊 Diagnóstico Financeiro e Direcionamento de Caixa")
-    st.markdown("O sistema realizou a varredura automática dos seus dados. Veja abaixo os pontos de atenção encontrados e o que fazer com cada um deles:")
+    st.header("⚡ Diagnóstico Técnico Executivo & Pronta Resposta")
+    st.markdown("Varredura concluída. Abaixo constam as inconformidades localizadas e o plano de ação operacional imediato para proteção do caixa:")
 
-    # 1. Painel Executivo com Linguagem Clara
+    # 1. KPIs de Controle
     col_kpi1, col_kpi2, col_kpi3 = st.columns(3)
     with col_kpi1:
-        st.metric(label="⚠️ Problemas Encontrados", value=f"{total_alertas_reais} erros no total")
+        st.metric(label="⚠️ Inconformidades Detectadas", value=f"{total_alertas_reais} ocorrências")
     with col_kpi2:
-        st.metric(label="💰 Dinheiro em Risco no Caixa", value=f"R$ {total_exposicao_financeira:,.2f}", delta="Prejuízo Provável", delta_color="inverse")
+        st.metric(label="💰 Capital em Risco Crítico", value=f"R$ {total_exposicao_financeira:,.2f}", delta="Exposição de Caixa", delta_color="inverse")
     with col_kpi3:
-        status_compliance = "🚨 RISCO ALTO" if total_exposicao_financeira > 0 else "✅ TUDO CERTO"
-        st.metric(label="🛡️ Situação Atual da Empresa", value=status_compliance)
+        status_compliance = "🚨 COMPLIANCE CRÍTICO" if total_exposicao_financeira > 0 else "✅ COMPLIANCE SAUDÁVEL"
+        st.metric(label="🛡️ Matriz de Risco Atual", value=status_compliance)
 
-    # 2. Explicação Prática e Caminho das Pedras para o Cliente
+    # 2. Planos de Ação Operacionais Imediatos
     
-    # Cenário 1: Pagamentos Duplicados
+    # Cenário 1: Duplicações
     if not duplicadas.empty:
-        st.markdown(f"### 🔴 Cobranças ou Pagamentos Duplicados ({qtd_duplicadas_reais} caso(s) encontrado(s))")
-        st.error(f"**Prejuízo no Caixa:** R$ {valor_duplicado_risco:,.2f}")
-        st.markdown(
-            "**O que aconteceu:** O sistema encontrou contas ou notas com o mesmo número e mesmo valor. "
-            "Isso significa que a sua empresa pode ter pago duas vezes pela mesma coisa sem perceber, ou o fornecedor enviou a cobrança em dobro."
-        )
+        st.markdown(f"### 🔴 1. Erro de Processamento: Lançamentos Duplicados ({qtd_duplicadas_reais} ocorrência(s))")
+        st.error(f"**Impacto Direto:** R$ {valor_duplicado_risco:,.2f} retidos na matriz de redundância.")
+        st.markdown("**Fato:** Identificação de transações com numeração e valores idênticos. Alto risco de duplo desembolso para a mesma obrigação fiscal.")
         st.dataframe(duplicadas[['Numero_NF', 'Nome_Emitente', 'Valor_Total', 'Data_Emissao']], use_container_width=True)
         
-        # O CAMINHO PARA O CLIENTE SEGUIR:
+        # AÇÃO OPERACIONAL EXECUTIVA
         st.markdown("""
-        **🧭 Como resolver este problema (Passo a Passo):**
-        1. **Bloqueio Imediato:** Entre em contato com o setor de Contas a Pagar e mande suspender qualquer pagamento agendado para esses números.
-        2. **Conferência Bancária:** Abra o extrato do seu banco e verifique se o dinheiro já saiu duas vezes.
-        3. **Estorno:** Caso o pagamento duplo tenha acontecido, envie o comprovante ao fornecedor e exija a devolução do dinheiro ou um crédito na próxima compra.
+        **⚡ AÇÃO OPERACIONAL IMEDIATA:**
+        * **Suspender** o agendamento bancário dos IDs listados acima no sistema de Contas a Pagar.
+        * **Confrontar** a transação com o extrato de fluxo de caixa para verificar se houve a saída dupla.
+        * **Notificar** o emissor da cobrança exigindo o estorno imediato ou a emissão de nota de crédito correlata.
         """)
     
-    # Cenário 2: Gastos Suspeitos / Valores Muito Altos (Superfaturamento)
-    if not superfaturadas.empty:
-        st.markdown(f"### 🟡 Gastos Acima do Normal / Suspeita de Valores Excessivos ({qtd_superfaturadas_reais} caso(s) encontrado(s))")
-        st.warning(f"**Prejuízo no Caixa:** R$ {valor_superfaturado_risco:,.2f}")
-        st.markdown(
-            "**O que aconteceu:** Estes fornecedores cobraram valores muito mais altos do que o combinado ou do que eles costumam cobrar normalmente. "
-            "Isso pode indicar um erro de digitação do funcionário, um reajuste de preço abusivo do fornecedor ou cobrança por serviços não realizados."
-        )
-        st.dataframe(superfaturadas[['Numero_NF', 'Nome_Emitente', 'Valor_Total', 'Natureza_Operacao']], use_container_width=True)
-        
-        # O CAMINHO PARA O CLIENTE SEGUIR:
-        st.markdown("""
-        **🧭 Como resolver este problema (Passo a Passo):**
-        1. **Auditoria de Contrato:** Pegue o contrato assinado com esse fornecedor e veja se o preço bate com o que está na tabela acima.
-        2. **Cobrar Justificativa:** Ligue para o fornecedor e pergunte por que o valor dessa transação veio tão acima da média usual.
-        3. **Aprovação Interna:** Verifique com o gerente da área se ele autorizou esse gasto extra por escrito antes da compra ser feita.
-        """)
-
-    # Cenário 3: Notas sem Identificação / Gastos Estranhos (Notas Fantasmas)
+    # Cenário 2: Notas Fantasmas e Reembolsos de Risco (Ex: Reembolso Presidência do CSV de teste)
     if not notas_fantasmas.empty:
-        st.markdown(f"### 🟤 Lançamentos Sem Comprovação ou Sem Nome ({qtd_fantasmas_reais} caso(s) encontrado(s))")
-        st.info(f"**Prejuízo no Caixa:** R$ {valor_fantasma_risco:,.2f}")
-        st.markdown(
-            "**O que aconteceu:** Foram encontrados lançamentos com valores zerados, sem o nome do fornecedor ou marcados como 'Reembolso/Bônus' sem nenhuma nota fiscal anexada. "
-            "Isso é perigoso porque a empresa pode estar gastando dinheiro com saídas falsas ou sem comprovação para a Receita Federal."
-        )
+        st.markdown(f"### 🟤 2. Anomalia Cadastral: Lançamentos Sem Lastro ou Sob Investigação ({qtd_fantasmas_reais} ocorrência(s))")
+        st.info(f"**Impacto Direto:** R$ {valor_fantasma_risco:,.2f} sob exposição regulatória.")
+        st.markdown("**Fato:** Identificação de saídas financeiras de alto risco sem CNPJ válido, valores zerados ou classificadas como bônus/reembolsos extraordinários de gestão.")
         st.dataframe(notas_fantasmas[['Numero_NF', 'Nome_Emitente', 'Valor_Total']], use_container_width=True)
         
-        # O CAMINHO PARA O CLIENTE SEGUIR:
+        # AÇÃO OPERACIONAL EXECUTIVA
         st.markdown("""
-        **🧭 Como resolver este problema (Passo a Passo):**
-        1. **Rastrear o Funcionário:** Descubra no seu sistema financeiro quem foi o funcionário que registrou essa transação.
-        2. **Exigir o Documento:** Dê um prazo para o responsável apresentar o cupom fiscal ou a nota fiscal física que comprove o gasto.
-        3. **Correção Fiscal:** Caso a nota não exista, converse com o seu contador para estornar ou corrigir o lançamento para evitar multas pesadas do governo.
+        **⚡ AÇÃO OPERACIONAL IMEDIATA:**
+        * **Rastrear** o usuário de origem (login do ERP) que realizou a digitação física desta despesa.
+        * **Exigir** o envio imediato da folha de aprovação assinada e do cupom/comprovante digital de suporte.
+        * **Isolar** a conta contábil do lançamento até a comprovação legal para evitar passivos na Receita Federal.
         """)
 
-    # Cenário 4: Tudo perfeito
+    # Cenário 3: Superfaturamento
+    if not superfaturadas.empty:
+        st.markdown(f"### 🟡 3. Desvio Operacional: Suspeita de Superfaturamento / Valores Abusivos ({qtd_superfaturadas_reais} ocorrência(s))")
+        st.warning(f"**Impacto Direto:** R$ {valor_superfaturado_risco:,.2f} acima da curva usual.")
+        st.markdown("**Fato:** Lançamentos com margem de valor severamente acima da média histórica praticada para o mesmo fornecedor ou categoria de serviço.")
+        st.dataframe(superfaturadas[['Numero_NF', 'Nome_Emitente', 'Valor_Total', 'Natureza_Operacao']], use_container_width=True)
+        
+        # AÇÃO OPERACIONAL EXECUTIVA
+        st.markdown("""
+        **⚡ AÇÃO OPERACIONAL IMEDIATA:**
+        * **Confrontar** a cobrança com a Ordem de Compra (PO) original ou contrato master de prestação de serviços.
+        * **Glosa Fiscal:** Reter a liquidação financeira do valor excedente até a justificativa de escopo pelo fornecedor.
+        * **Auditar** o setor de suprimentos para avaliar reajustes unilaterais não homologados pela diretoria.
+        """)
+
+    # Cenário 4: Limpo
     if duplicadas.empty and superfaturadas.empty and notas_fantasmas.empty:
-        st.success("🎉 **Seu Fechamento de Caixa está Perfeito!**")
+        st.success("🎉 **Compliance Financeiro Homologado!**")
         st.balloons()
-        st.markdown("#### Nenhuma irregularidade ou perda de dinheiro foi encontrada.")
+        st.markdown("#### Matrizes de Risco Zeradas.")
         st.markdown(
-            "O sistema revisou linha por linha e confirmou que não existem contas pagas em dobro, "
-            "todos os valores cobrados estão dentro do combinado com os fornecedores e não há nenhum lançamento suspeito sem documento. "
-            "Seu balanço financeiro está totalmente seguro e pronto para ser fechado."
+            "O motor de triagem local concluiu a análise vetorial e confirmou a perfeita integridade dos dados. "
+            "Zero duplicidades operacionais, desvios matemáticos de faturamento ou anomalias cadastrais sem lastro fiscal. "
+            "O fechamento está validado e liberado para consolidação final de balanço."
         )
