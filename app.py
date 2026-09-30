@@ -113,44 +113,54 @@ if df is not None:
     df['CNPJ_Emitente'] = df['CNPJ_Emitente'].astype(str)
     df['Valor_Total'] = pd.to_numeric(df['Valor_Total'], errors='coerce').fillna(0.0)
     
-    # 1. Identificação de Lançamentos Duplicados (Mesmo ID/Valor)
+    # 1. Identificação de Lançamentos Duplicados (Mesmo ID e mesmo Valor)
     duplicadas = df[df.duplicated(subset=['Numero_NF', 'Valor_Total'], keep=False)].copy()
     
-    # 2. Identificação de Notas Suspeitas / Inconsistências Críticas (Notas Fantasmas e Reembolsos)
-    # Filtra os termos suspeitos direto na base original
-    fantasmas_filtro = (df['Valor_Total'] == 0) | (df['Numero_NF'] == 'N/A') | (df['Nome_Emitente'] == 'N/A') | (df['Nome_Emitente'].str.contains('Reembolso|Bônus|Presidente|Diretoria', case=False, na=False))
-    # CORREÇÃO DO LOOP: Filtra e depois isola o que já está nas duplicadas usando isin
-    notas_fantasmas = df[fantasmas_filtro].copy()
-    notas_fantasmas = notas_fantasmas[~notas_fantasmas.index.isin(duplicadas.index)]
+    # Base residual: Removemos as duplicadas para que elas não poluam as outras análises
+    df_residual = df[~df.index.isin(duplicadas.index)].copy()
+    
+    # 2. Identificação de Anomalias Cadastrais (Notas Fantasmas / Reembolsos Suspeitos)
+    fantasmas_filtro = (
+        (df_residual['Valor_Total'] == 0) | 
+        (df_residual['Numero_NF'] == 'N/A') | 
+        (df_residual['Nome_Emitente'] == 'N/A') | 
+        (df_residual['Nome_Emitente'].str.contains('Reembolso|Bônus|Presidente|Diretoria', case=False, na=False))
+    )
+    notas_fantasmas = df_residual[fantasmas_filtro].copy()
+    
+    # Base residual atualizada: Removemos também as anomalias cadastrais
+    df_residual = df_residual[~df_residual.index.isin(notas_fantasmas.index)].copy()
     
     # 3. Identificação de Desvios Críticos de Valor (Superfaturamento)
+    # Calculamos a média e desvio padrão usando a base original para manter o histórico do fornecedor
     media_por_fornecedor = df.groupby('CNPJ_Emitente')['Valor_Total'].transform('mean')
     desvio_por_fornecedor = df.groupby('CNPJ_Emitente')['Valor_Total'].transform('std').fillna(0)
-    superfaturadas_base = df[(df['Valor_Total'] > (media_por_fornecedor + (2 * desvio_por_fornecedor))) & (df['Valor_Total'] > 5000)].copy()
     
-    # CORREÇÃO DO LOOP: Limpa sobreposições de forma segura sem mexer no índice original
-    superfaturadas = superfaturadas_base[~superfaturadas_base.index.isin(duplicadas.index)]
-    superfaturadas = superfaturadas[~superfaturadas.index.isin(notas_fantasmas.index)]
+    # Filtramos apenas os registros que restaram e que violam a regra de valor
+    superfaturadas_base = df[(df['Valor_Total'] > (media_por_fornecedor + (2 * desvio_por_fornecedor))) & (df['Valor_Total'] > 5000)]
+    superfaturadas = superfaturadas_base[superfaturadas_base.index.isin(df_residual.index)].copy()
 
-    # --- CÁLCULO DE IMPACTO FINANCEIRO ---
+    # --- CÁLCULO DE IMPACTO FINANCEIRO REAL ---
+    # As duplicadas contam como metade na quantidade real pois aparecem em par na tabela
     qtd_duplicadas_reais = int(len(duplicadas) / 2) if len(duplicadas) > 0 else 0
     valor_duplicado_risco = duplicadas['Valor_Total'].sum() / 2
-    
-    qtd_superfaturadas_reais = len(superfaturadas)
-    valor_superfaturado_risco = superfaturadas['Valor_Total'].sum()
     
     qtd_fantasmas_reais = len(notas_fantasmas)
     valor_fantasma_risco = notas_fantasmas['Valor_Total'].sum()
     
-    total_alertas_reais = qtd_duplicadas_reais + qtd_superfaturadas_reais + qtd_fantasmas_reais
-    total_exposicao_financeira = valor_duplicado_risco + valor_superfaturado_risco + valor_fantasma_risco
+    qtd_superfaturadas_reais = len(superfaturadas)
+    valor_superfaturado_risco = superfaturadas['Valor_Total'].sum()
+    
+    # Soma exata e alinhada dos totalizadores
+    total_alertas_reais = qtd_duplicadas_reais + qtd_fantasmas_reais + qtd_superfaturadas_reais
+    total_exposicao_financeira = valor_duplicado_risco + valor_fantasma_risco + valor_superfaturado_risco
 
     # --- PAINEL TÉCNICO DE PRONTA RESPOSTA ---
     st.markdown("---")
     st.header("⚡ Diagnóstico Técnico Executivo & Pronta Resposta")
     st.markdown("Varredura concluída. Abaixo constam as inconformidades localizadas e o plano de ação operacional imediato para proteção do caixa:")
 
-    # 1. KPIs de Controle
+    # 1. KPIs de Controle Alinhados
     col_kpi1, col_kpi2, col_kpi3 = st.columns(3)
     with col_kpi1:
         st.metric(label="⚠️ Inconformidades Detectadas", value=f"{total_alertas_reais} ocorrências")
