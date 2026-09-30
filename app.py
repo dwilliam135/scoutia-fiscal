@@ -117,19 +117,20 @@ if df is not None:
     duplicadas = df[df.duplicated(subset=['Numero_NF', 'Valor_Total'], keep=False)].copy()
     
     # 2. Identificação de Notas Suspeitas / Inconsistências Críticas (Notas Fantasmas e Reembolsos)
-    notas_fantasmas = df[(df['Valor_Total'] == 0) | (df['Numero_NF'] == 'N/A') | (df['Nome_Emitente'] == 'N/A') | (df['Nome_Emitente'].str.contains('Reembolso|Bônus|Presidente|Diretoria', case=False, na=False))].copy()
-    
-    # Isola o que é fantasma/reembolso para não duplicar na contagem
-    notas_fantasmas = notas_fantasmas.drop(duplicadas.index, errors='ignore')
+    # Filtra os termos suspeitos direto na base original
+    fantasmas_filtro = (df['Valor_Total'] == 0) | (df['Numero_NF'] == 'N/A') | (df['Nome_Emitente'] == 'N/A') | (df['Nome_Emitente'].str.contains('Reembolso|Bônus|Presidente|Diretoria', case=False, na=False))
+    # CORREÇÃO DO LOOP: Filtra e depois isola o que já está nas duplicadas usando isin
+    notas_fantasmas = df[fantasmas_filtro].copy()
+    notas_fantasmas = notas_fantasmas[~notas_fantasmas.index.isin(duplicadas.index)]
     
     # 3. Identificação de Desvios Críticos de Valor (Superfaturamento)
     media_por_fornecedor = df.groupby('CNPJ_Emitente')['Valor_Total'].transform('mean')
     desvio_por_fornecedor = df.groupby('CNPJ_Emitente')['Valor_Total'].transform('std').fillna(0)
-    superfaturadas = df[(df['Valor_Total'] > (media_por_fornecedor + (2 * desvio_por_fornecedor))) & (df['Valor_Total'] > 5000)].copy()
+    superfaturadas_base = df[(df['Valor_Total'] > (media_por_fornecedor + (2 * desvio_por_fornecedor))) & (df['Valor_Total'] > 5000)].copy()
     
-    # Limpa sobreposições para manter a integridade exata dos números na tela
-    superfaturadas = superfaturadas.drop(duplicadas.index, errors='ignore')
-    superfaturadas = superfaturadas.drop(notas_fantasmas.index, errors='ignore')
+    # CORREÇÃO DO LOOP: Limpa sobreposições de forma segura sem mexer no índice original
+    superfaturadas = superfaturadas_base[~superfaturadas_base.index.isin(duplicadas.index)]
+    superfaturadas = superfaturadas[~superfaturadas.index.isin(notas_fantasmas.index)]
 
     # --- CÁLCULO DE IMPACTO FINANCEIRO ---
     qtd_duplicadas_reais = int(len(duplicadas) / 2) if len(duplicadas) > 0 else 0
@@ -168,7 +169,6 @@ if df is not None:
         st.markdown("**Fato:** Identificação de transações com numeração e valores idênticos. Alto risco de duplo desembolso para a mesma obrigação fiscal.")
         st.dataframe(duplicadas[['Numero_NF', 'Nome_Emitente', 'Valor_Total', 'Data_Emissao']], use_container_width=True)
         
-        # AÇÃO OPERACIONAL EXECUTIVA
         st.markdown("""
         **⚡ AÇÃO OPERACIONAL IMEDIATA:**
         * **Suspender** o agendamento bancário dos IDs listados acima no sistema de Contas a Pagar.
@@ -176,14 +176,13 @@ if df is not None:
         * **Notificar** o emissor da cobrança exigindo o estorno imediato ou a emissão de nota de crédito correlata.
         """)
     
-    # Cenário 2: Notas Fantasmas e Reembolsos de Risco (Ex: Reembolso Presidência do CSV de teste)
+    # Cenário 2: Notas Fantasmas e Reembolsos de Risco
     if not notas_fantasmas.empty:
         st.markdown(f"### 🟤 2. Anomalia Cadastral: Lançamentos Sem Lastro ou Sob Investigação ({qtd_fantasmas_reais} ocorrência(s))")
         st.info(f"**Impacto Direto:** R$ {valor_fantasma_risco:,.2f} sob exposição regulatória.")
         st.markdown("**Fato:** Identificação de saídas financeiras de alto risco sem CNPJ válido, valores zerados ou classificadas como bônus/reembolsos extraordinários de gestão.")
         st.dataframe(notas_fantasmas[['Numero_NF', 'Nome_Emitente', 'Valor_Total']], use_container_width=True)
         
-        # AÇÃO OPERACIONAL EXECUTIVA
         st.markdown("""
         **⚡ AÇÃO OPERACIONAL IMEDIATA:**
         * **Rastrear** o usuário de origem (login do ERP) que realizou a digitação física desta despesa.
@@ -198,7 +197,6 @@ if df is not None:
         st.markdown("**Fato:** Lançamentos com margem de valor severamente acima da média histórica praticada para o mesmo fornecedor ou categoria de serviço.")
         st.dataframe(superfaturadas[['Numero_NF', 'Nome_Emitente', 'Valor_Total', 'Natureza_Operacao']], use_container_width=True)
         
-        # AÇÃO OPERACIONAL EXECUTIVA
         st.markdown("""
         **⚡ AÇÃO OPERACIONAL IMEDIATA:**
         * **Confrontar** a cobrança com a Ordem de Compra (PO) original ou contrato master de prestação de serviços.
