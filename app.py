@@ -23,14 +23,12 @@ st.sidebar.subheader("🔑 Autenticação do Cliente")
 licenca_usuario = st.sidebar.text_input("Insira sua Chave de Licença ScoutIA:", type="password").strip()
 
 # --- INICIALIZAÇÃO DA API GEMINI ---
-# Tenta pegar a chave dos Secrets do Streamlit ou da variável de ambiente tradicional
 CHAVE_INTERNA_IA = ""
 if "GEMINI_API_KEY" in st.secrets:
     CHAVE_INTERNA_IA = st.secrets["GEMINI_API_KEY"]
 else:
     CHAVE_INTERNA_IA = os.environ.get("GEMINI_API_KEY", "")
 
-# Cria o cliente da IA se houver uma chave definida
 client = None
 if CHAVE_INTERNA_IA:
     try:
@@ -38,11 +36,42 @@ if CHAVE_INTERNA_IA:
     except Exception as e:
         st.sidebar.error(f"Erro ao inicializar cliente da IA: {str(e)}")
 
-# Exibe aviso na barra lateral se a IA não estiver configurada
 if not client:
     st.sidebar.warning("⚠️ IA offline: Defina a chave GEMINI_API_KEY nos Secrets do Streamlit.")
 
 WEBHOOK_MONITORAMENTO = "https://google.com"
+
+# --- FUNÇÃO DE CACHE DA IA PARA EVITAR GARGALOS E CONGESTIONAMENTOS ---
+@st.cache_data(show_spinner=False)
+def executar_chamada_ia_com_fallback(resumo_str, prompt_sistema_str, _client_ia):
+    if _client_ia is None:
+        return "Erro: Cliente de IA não configurado."
+        
+    modelos_producao = [
+        'gemini-3.8-flash',
+        'gemini-3.7-flash',
+        'gemini-3.5-flash',
+        'gemini-2.5-flash'
+    ]
+    
+    erro_acumulado = ""
+    for modelo_teste in modelos_producao:
+        try:
+            resposta = _client_ia.models.generate_content(
+                model=modelo_teste,
+                contents=f"Dados consolidados da pré-triagem do fechamento:\n\n{resumo_str}",
+                config=types.GenerateContentConfig(
+                    system_instruction=prompt_sistema_str,
+                    temperature=0.1
+                )
+            )
+            if resposta and resposta.text:
+                return resposta.text
+        except Exception as e:
+            erro_acumulado += f"[{modelo_teste}]: {str(e)} | "
+            continue
+            
+    return f"ERRO DE INFRAESTRUTURA: Todos os servidores estão instáveis. Detalhes: {erro_acumulado}"
 
 # Upload de arquivos (Híbrido)
 arquivos_upload = st.file_uploader("Escolha o relatório CSV ou selecione múltiplas Notas Fiscais XML", type=["csv", "xml"], accept_multiple_files=True)
@@ -51,9 +80,8 @@ df = None
 nome_arquivo_log = ""
 
 if arquivos_upload and len(arquivos_upload) > 0:
-    primeiro_arquivo = arquivos_upload[0]
+    primeiro_arquivo = arquivos_upload
     
-    # CASO 1: PROCESSAMENTO DE ARQUIVO CSV
     if primeiro_arquivo.name.endswith('.csv'):
         try:
             df = pd.read_csv(primeiro_arquivo)
@@ -68,7 +96,6 @@ if arquivos_upload and len(arquivos_upload) > 0:
             }
             
             df = df.rename(columns=mapeamento_colunas)
-            
             if 'CNPJ_Emitente' not in df.columns:
                 df['CNPJ_Emitente'] = df['Nome_Emitente']
                 
@@ -76,7 +103,6 @@ if arquivos_upload and len(arquivos_upload) > 0:
         except Exception as e:
             st.error(f"Erro ao ler o arquivo CSV: {str(e)}")
             
-    # CASO 2: PROCESSAMENTO DE MÚLTIPLOS XMLs
     else:
         st.info(f"Processando {len(arquivos_upload)} arquivo(s) XML...")
         dados_processados = []
@@ -85,7 +111,6 @@ if arquivos_upload and len(arquivos_upload) > 0:
                 try:
                     tree = ET.parse(arquivo)
                     root = tree.getroot()
-                    
                     ns = {'ns': 'http://portalfiscal.inf.br'}
                     
                     def find_element(path):
@@ -118,8 +143,6 @@ if arquivos_upload and len(arquivos_upload) > 0:
             df = pd.DataFrame(dados_processados)
             nome_arquivo_log = f"Lote_XML_{len(dados_processados)}_notas.csv"
             st.success(f"{len(df)} Nota(s) Fiscal(ais) consolidada(s) com sucesso!")
-
-# APLICAÇÃO DAS REGRAS DE AUDITORIA E ANÁLISE ESTATÍSTICA
 if df is not None:
     if licenca_usuario in BANCO_DE_LICENCAS:
         info_plano = BANCO_DE_LICENCAS[licenca_usuario]
@@ -141,10 +164,8 @@ if df is not None:
     df['CNPJ_Emitente'] = df['CNPJ_Emitente'].astype(str)
     df['Valor_Total'] = pd.to_numeric(df['Valor_Total'], errors='coerce').fillna(0.0)
     
-    # 1. Detecção de Notas/Transações Duplicadas
     duplicadas = df[df.duplicated(subset=['Numero_NF', 'Valor_Total'], keep=False)]
     
-    # 2. Desvios e Possível Superfaturamento
     media_por_fornecedor = df.groupby('CNPJ_Emitente')['Valor_Total'].transform('mean')
     desvio_por_fornecedor = df.groupby('CNPJ_Emitente')['Valor_Total'].transform('std').fillna(0)
     
@@ -161,14 +182,13 @@ if df is not None:
         if not superfaturadas.empty:
             st.dataframe(superfaturadas[['Numero_NF', 'Nome_Emitente', 'Valor_Total']])
 
-                     # --- DISPARO DA INTELIGÊNCIA ARTIFICIAL CONECTADA E RESILIENTE ---
+    # --- DISPARO DA INTELIGÊNCIA ARTIFICIAL E CACHE ---
     if st.button("🛡️ Gerar Parecer Antifraude com ScoutIA"):
         if not client:
-            st.error("Erro: A IA não pôde ser iniciada. Certifique-se de configurar a variável 'GEMINI_API_KEY' nas configurações (Secrets) do seu painel Streamlit.")
+            st.error("Erro: A IA não pôde ser iniciada. Configure a variável 'GEMINI_API_KEY' no Streamlit.")
         else:
             with st.spinner("A IA está cruzando os indícios e redigindo o parecer técnico..."):
                 
-                # Monta o payload consolidado
                 resumo_auditoria = {
                     "total_transacoes_analisadas": len(df),
                     "total_valor_movimentado": float(df['Valor_Total'].sum()),
@@ -187,40 +207,11 @@ if df is not None:
                     "Seja extremamente formal, técnico e ofereça recomendações claras de governança e auditoria."
                 )
                 
-                # Modelos oficiais homologados para a nova infraestrutura
-                modelos_disponiveis = [
-                    'gemini-3.8-flash', 
-                    'gemini-3.7-flash', 
-                    'gemini-3.5-flash',
-                    'gemini-3.1-pro-preview'
-                ]
-                resposta = None
-                erro_acumulado = ""
+                resumo_str = str(resumo_auditoria)
+                resultado_texto = executar_chamada_ia_com_fallback(resumo_str, prompt_sistema, client)
                 
-                # Laço de tentativa e erro inteligente
-                for modelo_teste in modelos_disponiveis:
-                    try:
-                        resposta = client.models.generate_content(
-                            model=modelo_teste,
-                            contents=f"Dados consolidados da pré-triagem do fechamento:\n\n{str(resumo_auditoria)}",
-                            config=types.GenerateContentConfig(
-                                system_instruction=prompt_sistema,
-                                temperature=0.1
-                            )
-                        )
-                        # Se conseguir responder, interrompe o laço com sucesso
-                        if resposta and resposta.text:
-                            break
-                    except Exception as e:
-                        erro_acumulado += f" Falha no {modelo_teste}: {str(e)} |"
-                        continue
-                
-                # Verifica se conseguimos resposta de algum dos modelos
-                if resposta and resposta.text:
-                    st.subheader("🛡️ Relatório Pericial Forense (ScoutIA)")
-                    st.markdown(resposta.text)
+                if "ERRO DE INFRAESTRUTURA" in resultado_texto:
+                    st.error(resultado_texto)
                 else:
-                    st.error(
-                        f"Todos os servidores da IA do Google estão congestionados no momento devido à alta demanda global. "
-                        f"Detalhes técnicos: {erro_acumulado} Por favor, aguarde alguns segundos e clique no botão novamente."
-                    )
+                    st.subheader("🛡️ Relatório Pericial Forense (ScoutIA)")
+                    st.markdown(resultado_texto)
