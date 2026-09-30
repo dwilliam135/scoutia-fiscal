@@ -161,7 +161,7 @@ if df is not None:
         if not superfaturadas.empty:
             st.dataframe(superfaturadas[['Numero_NF', 'Nome_Emitente', 'Valor_Total']])
 
-                 # --- DISPARO DA INTELIGÊNCIA ARTIFICIAL CONECTADA E RESILIENTE ---
+                     # --- DISPARO DA INTELIGÊNCIA ARTIFICIAL CONECTADA E RESILIENTE ---
     if st.button("🛡️ Gerar Parecer Antifraude com ScoutIA"):
         if not client:
             st.error("Erro: A IA não pôde ser iniciada. Certifique-se de configurar a variável 'GEMINI_API_KEY' nas configurações (Secrets) do seu painel Streamlit.")
@@ -187,8 +187,13 @@ if df is not None:
                     "Seja extremamente formal, técnico e ofereça recomendações claras de governança e auditoria."
                 )
                 
-                # LISTA CORRIGIDA: Modelos funcionais com suporte na SDK atual
-                modelos_disponiveis = ['gemini-3.8-flash', 'gemini-2.0-flash', 'gemini-1.5-pro']
+                # Modelos oficiais homologados para a nova infraestrutura
+                modelos_disponiveis = [
+                    'gemini-3.8-flash', 
+                    'gemini-3.7-flash', 
+                    'gemini-3.5-flash',
+                    'gemini-3.1-pro-preview'
+                ]
                 resposta = None
                 erro_acumulado = ""
                 
