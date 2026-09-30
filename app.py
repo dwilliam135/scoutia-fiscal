@@ -25,15 +25,15 @@ arquivos_upload = st.file_uploader("Escolha o relatório CSV ou selecione múlti
 df = None
 nome_arquivo_log = ""
 
-# CORREÇÃO CRÍTICA DO LOOP: Acessando os elementos da lista por índice
+# Processamento seguro da lista de uploads
 if arquivos_upload and len(arquivos_upload) > 0:
+    primeiro_arquivo = arquivos_upload[0] # Correção crítica: Acessa o primeiro item indexado da lista
     
-    # Se houver apenas 1 arquivo na lista e ele for um CSV
-    if len(arquivos_upload) == 1 and arquivos_upload[0].name.endswith('.csv'):
+    # CASO 1: PROCESSAMENTO DE ARQUIVO CSV
+    if primeiro_arquivo.name.endswith('.csv'):
         try:
-            arquivo_csv = arquivos_upload[0] # Acessa o arquivo correto dentro da lista
-            df = pd.read_csv(arquivo_csv)
-            nome_arquivo_log = arquivo_csv.name
+            df = pd.read_csv(primeiro_arquivo)
+            nome_arquivo_log = primeiro_arquivo.name
             
             mapeamento_colunas = {
                 'id_transacao': 'Numero_NF',
@@ -51,7 +51,7 @@ if arquivos_upload and len(arquivos_upload) > 0:
         except Exception as e:
             st.error(f"Erro ao ler o arquivo CSV: {str(e)}")
             
-    # Se forem múltiplos arquivos ou arquivos XML
+    # CASO 2: PROCESSAMENTO DE MÚLTIPLOS XMLs
     else:
         st.info(f"Processando {len(arquivos_upload)} arquivo(s) XML...")
         dados_processados = []
@@ -92,8 +92,8 @@ if arquivos_upload and len(arquivos_upload) > 0:
             df = pd.DataFrame(dados_processados)
             nome_arquivo_log = f"Lote_XML_{len(dados_processados)}_notas.csv"
             st.success(f"{len(df)} Nota(s) Fiscal(ais) consolidada(s) com sucesso!")
+# --- INÍCIO DO BLOCO DE VISUALIZAÇÃO E AUDITORIA ---
 if df is not None:
-    # --- CONTROLE DE PLANO COMERCIAL ---
     if licenca_usuario in BANCO_DE_LICENCAS:
         info_plano = BANCO_DE_LICENCAS[licenca_usuario]
         limite = info_plano["limite_linhas"]
@@ -108,7 +108,7 @@ if df is not None:
     st.subheader("📋 Relatório de Dados Consolidados para Análise")
     st.dataframe(df, use_container_width=True)
 
-    # --- MOTOR DE AUDITORIA INTERNA (PANDAS LOCAL) ---
+    # Padronização e tratamento rigoroso de texto e números para evitar divergências
     df['Numero_NF'] = df['Numero_NF'].astype(str).str.strip()
     df['CNPJ_Emitente'] = df['CNPJ_Emitente'].astype(str).str.strip()
     df['Nome_Emitente'] = df['Nome_Emitente'].astype(str).str.strip()
@@ -117,8 +117,7 @@ if df is not None:
     # 1. Identificação de Lançamentos Duplicados
     duplicadas = df[df.duplicated(subset=['Numero_NF', 'Valor_Total'], keep=False)].copy()
     
-    # 2. Identificação de Anomalias Cadastrais (Notas Fantasmas / Reembolsos / Bônus)
-    # Criamos uma busca em minúsculas para não ignorar variações como REEMBOLSO, Reembolso ou bônus
+    # 2. Identificação de Anomalias Cadastrais / Reembolsos Suspeitos (Filtro Padronizado)
     nome_emitente_minulo = df['Nome_Emitente'].str.lower()
     fantasmas_filtro = (
         (df['Valor_Total'] == 0) | 
@@ -127,7 +126,6 @@ if df is not None:
         (nome_emitente_minulo.str.contains('reembolso|bônus|bonus|presidente|diretoria', case=False, na=False))
     )
     notas_fantasmas = df[fantasmas_filtro].copy()
-    # Remove o que já foi classificado como duplicado
     notas_fantasmas = notas_fantasmas[~notas_fantasmas.index.isin(duplicadas.index)]
     
     # 3. Identificação de Desvios Críticos de Valor (Superfaturamento)
@@ -135,11 +133,10 @@ if df is not None:
     desvio_por_fornecedor = df.groupby('CNPJ_Emitente')['Valor_Total'].transform('std').fillna(0)
     
     superfaturadas_base = df[(df['Valor_Total'] > (media_por_fornecedor + (2 * desvio_por_fornecedor))) & (df['Valor_Total'] > 5000)].copy()
-    # Remove as sobreposições de forma estrita para evitar contagem dupla
     superfaturadas = superfaturadas_base[~superfaturadas_base.index.isin(duplicadas.index)]
     superfaturadas = superfaturadas[~superfaturadas.index.isin(notas_fantasmas.index)]
 
-    # --- CÁLCULO DE IMPACTO FINANCEIRO REAL (AMARRADO ÀS GRADES FINAIS) ---
+    # Amarrando rigorosamente as variáveis numéricas dos KPIs ao tamanho real das matrizes finais
     qtd_duplicadas_reais = int(len(duplicadas) / 2) if len(duplicadas) > 0 else 0
     qtd_fantasmas_reais = len(notas_fantasmas)
     qtd_superfaturadas_reais = len(superfaturadas)
@@ -151,12 +148,11 @@ if df is not None:
     total_alertas_reais = qtd_duplicadas_reais + qtd_fantasmas_reais + qtd_superfaturadas_reais
     total_exposicao_financeira = valor_duplicado_risco + valor_fantasma_risco + valor_superfaturado_risco
 
-    # --- PAINEL TÉCNICO DE PRONTA RESPOSTA ---
     st.markdown("---")
     st.header("⚡ Diagnóstico Técnico Executivo & Pronta Resposta")
     st.markdown("Varredura concluída. Abaixo constam as inconformidades localizadas e o plano de ação operacional imediato para proteção do caixa:")
 
-    # 1. KPIs de Controle Forçados ao Alinhamento
+    # Painel de KPIs de Controle Gerais
     col_kpi1, col_kpi2, col_kpi3 = st.columns(3)
     with col_kpi1:
         st.metric(label="⚠️ Inconformidades Detectadas", value=f"{total_alertas_reais} ocorrências")
@@ -166,15 +162,12 @@ if df is not None:
         status_compliance = "🚨 COMPLIANCE CRÍTICO" if total_exposicao_financeira > 0 else "✅ COMPLIANCE SAUDÁVEL"
         st.metric(label="🛡️ Matriz de Risco Atual", value=status_compliance)
 
-    # 2. Planos de Ação Operacionais Imediatos
-    
-    # Cenário 1: Duplicações
+    # Exibição Técnica Ocorrência por Ocorrência
     if not duplicadas.empty:
         st.markdown(f"### 🔴 1. Erro de Processamento: Lançamentos Duplicados ({qtd_duplicadas_reais} ocorrência(s))")
         st.error(f"**Impacto Direto:** R$ {valor_duplicado_risco:,.2f} retidos na matriz de redundância.")
         st.markdown("**Fato:** Identificação de transações com numeração e valores idênticos. Alto risco de duplo desembolso para a mesma obrigação fiscal.")
         st.dataframe(duplicadas[['Numero_NF', 'Nome_Emitente', 'Valor_Total', 'Data_Emissao']], use_container_width=True)
-        
         st.markdown("""
         **⚡ AÇÃO OPERACIONAL IMEDIATA:**
         * **Suspender** o agendamento bancário dos IDs listados acima no sistema de Contas a Pagar.
@@ -182,13 +175,11 @@ if df is not None:
         * **Notificar** o emissor da cobrança exigindo o estorno imediato ou a emissão de nota de crédito correlata.
         """)
     
-    # Cenário 2: Notas Fantasmas e Reembolsos de Risco
     if not notas_fantasmas.empty:
         st.markdown(f"### 🟤 2. Anomalia Cadastral: Lançamentos Sem Lastro ou Sob Investigação ({qtd_fantasmas_reais} ocorrência(s))")
         st.info(f"**Impacto Direto:** R$ {valor_fantasma_risco:,.2f} sob exposição regulatória.")
         st.markdown("**Fato:** Identificação de saídas financeiras de alto risco sem CNPJ válido, valores zerados ou classificadas como bônus/reembolsos extraordinários de gestão.")
         st.dataframe(notas_fantasmas[['Numero_NF', 'Nome_Emitente', 'Valor_Total']], use_container_width=True)
-        
         st.markdown("""
         **⚡ AÇÃO OPERACIONAL IMEDIATA:**
         * **Rastrear** o usuário de origem (login do ERP) que realizou a digitação física desta despesa.
@@ -196,13 +187,11 @@ if df is not None:
         * **Isolar** a conta contábil do lançamento até a comprovação legal para evitar passivos na Receita Federal.
         """)
 
-    # Cenário 3: Superfaturamento
     if not superfaturadas.empty:
         st.markdown(f"### 🟡 3. Desvio Operacional: Suspeita de Superfaturamento / Valores Abusivos ({qtd_superfaturadas_reais} ocorrência(s))")
         st.warning(f"**Impacto Direto:** R$ {valor_superfaturado_risco:,.2f} acima da curva usual.")
         st.markdown("**Fato:** Lançamentos com margem de valor severamente acima da média histórica praticada para o mesmo fornecedor ou categoria de serviço.")
         st.dataframe(superfaturadas[['Numero_NF', 'Nome_Emitente', 'Valor_Total']], use_container_width=True)
-        
         st.markdown("""
         **⚡ AÇÃO OPERACIONAL IMEDIATA:**
         * **Confrontar** a cobrança com a Ordem de Compra (PO) original ou contrato master de prestação de serviços.
@@ -210,13 +199,8 @@ if df is not None:
         * **Auditar** o setor de suprimentos para avaliar reajustes unilaterais não homologados pela diretoria.
         """)
 
-    # Cenário 4: Limpo
     if duplicadas.empty and superfaturadas.empty and notas_fantasmas.empty:
         st.success("🎉 **Compliance Financeiro Homologado!**")
         st.balloons()
         st.markdown("#### Matrizes de Risco Zeradas.")
-        st.markdown(
-            "O motor de triagem local concluiu a análise vetorial e confirmou a perfeita integridade dos dados. "
-            "Zero duplicidades operacionais, desvios matemáticos de faturamento ou anomalias cadastrais sem lastro fiscal. "
-            "O fechamento está validado e liberado para consolidação final de balanço."
-        )
+        st.markdown("O motor de triagem local concluiu a análise vetorial e confirmou a perfeita integridade dos dados. O fechamento está validado.")
