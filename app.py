@@ -102,30 +102,26 @@ if df is not None:
             st.warning(f"Contrato {info_plano['plano']} limita a análise a {limite} linhas. Dados truncados.")
             df = df.head(limite)
     else:
-        st.sidebar.error("🚨 Modo Demonstração (Sem Chave): Exibindo até 200 registros.")
-        df = df.head(200)
-    
+        st.sidebar.error("🚨 Modo Demonstração (Sem Chave): Exibindo registros.")
+        
     st.subheader("📋 Relatório de Dados Consolidados para Análise")
     st.dataframe(df, use_container_width=True)
 
-    # Padronização rigorosa
+    # Tratamento e limpeza estrutural de dados
     df['Numero_NF'] = df['Numero_NF'].astype(str).str.strip()
     df['CNPJ_Emitente'] = df['CNPJ_Emitente'].astype(str).str.strip()
     df['Nome_Emitente'] = df['Nome_Emitente'].astype(str).str.strip()
     df['Valor_Total'] = pd.to_numeric(df['Valor_Total'], errors='coerce').fillna(0.0)
     
-    # 1. Identificação de Lançamentos Duplicados
+    # 1. Identificação de Lançamentos Duplicados (Mesmo ID e Valor)
     duplicadas = df[df.duplicated(subset=['Numero_NF', 'Valor_Total'], keep=False)].copy()
     
-    # 2. CORREÇÃO CIRÚRGICA: Filtro restrito para Anomalias Cadastrais (Apenas Reembolsos e Bônus Suspeitos)
-    nome_emitente_minulo = df['Nome_Emitente'].str.lower()
-    fantasmas_filtro = (
-        (df['Valor_Total'] == 0) | 
-        (df['Numero_NF'] == 'N/A') | 
-        (df['Nome_Emitente'] == 'N/A') | 
-        (nome_emitente_minulo.str.contains('reembolso|bônus|bonus', case=False, na=False))
-    )
-    notas_fantasmas = df[fantasmas_filtro].copy()
+    # 2. FIX DE CONTAGEM: Busca exata por termos-chave para evitar falsos positivos
+    # O uso dos delimitadores \b garante que busque a palavra exata 'reembolso' ou 'bônus'
+    filtro_palavras_chave = df['Nome_Emitente'].str.lower().str.contains(r'\breembolso\b|\bbônus\b|\bbonus\b', regex=True, na=False)
+    filtro_valores_nulos = (df['Valor_Total'] == 0) | (df['Numero_NF'] == 'N/A') | (df['Nome_Emitente'] == 'N/A')
+    
+    notas_fantasmas = df[filtro_palavras_chave | filtro_valores_nulos].copy()
     notas_fantasmas = notas_fantasmas[~notas_fantasmas.index.isin(duplicadas.index)]
     
     # 3. Identificação de Desvios Críticos de Valor (Superfaturamento)
@@ -133,10 +129,11 @@ if df is not None:
     desvio_por_fornecedor = df.groupby('CNPJ_Emitente')['Valor_Total'].transform('std').fillna(0)
     
     superfaturadas_base = df[(df['Valor_Total'] > (media_por_fornecedor + (2 * desvio_por_fornecedor))) & (df['Valor_Total'] > 5000)].copy()
+    # Isola completamente as tabelas para não haver dupla contagem
     superfaturadas = superfaturadas_base[~superfaturadas_base.index.isin(duplicadas.index)]
     superfaturadas = superfaturadas[~superfaturadas.index.isin(notas_fantasmas.index)]
 
-    # Vinculação direta dos contadores ao tamanho real das tabelas finais na tela
+    # Vinculação matemática direta baseada no conteúdo real filtrado
     qtd_duplicadas_reais = int(len(duplicadas) / 2) if len(duplicadas) > 0 else 0
     qtd_fantasmas_reais = len(notas_fantasmas)
     qtd_superfaturadas_reais = len(superfaturadas)
@@ -152,7 +149,7 @@ if df is not None:
     st.header("⚡ Diagnóstico Técnico Executivo & Pronta Resposta")
     st.markdown("Varredura concluída. Abaixo constam as inconformidades localizadas e o plano de ação operacional imediato para proteção do caixa:")
 
-    # Painel de KPIs de Controle Gerais
+    # Painel de KPIs Gerais
     col_kpi1, col_kpi2, col_kpi3 = st.columns(3)
     with col_kpi1:
         st.metric(label="⚠️ Inconformidades Detectadas", value=f"{total_alertas_reais} ocorrências")
@@ -162,7 +159,7 @@ if df is not None:
         status_compliance = "🚨 COMPLIANCE CRÍTICO" if total_exposicao_financeira > 0 else "✅ COMPLIANCE SAUDÁVEL"
         st.metric(label="🛡️ Matriz de Risco Atual", value=status_compliance)
 
-    # Exibição Técnica Ocorrência por Ocorrência
+    # Exibição das ocorrências com os comandos práticos executivos de negócio
     if not duplicadas.empty:
         st.markdown(f"### 🔴 1. Erro de Processamento: Lançamentos Duplicados ({qtd_duplicadas_reais} ocorrência(s))")
         st.error(f"**Impacto Direto:** R$ {valor_duplicado_risco:,.2f} retidos na matriz de redundância.")
@@ -203,4 +200,4 @@ if df is not None:
         st.success("🎉 **Compliance Financeiro Homologado!**")
         st.balloons()
         st.markdown("#### Matrizes de Risco Zeradas.")
-        st.markdown("O motor de triagem local concluiu a análise vetorial e confirmou a perfeita integridade dos dados. O fechamento está validado.")
+        st.markdown("O motor de triagem local concluiu a análise vetorial e confirmou a perfeita integridade dos dados.")
