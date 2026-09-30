@@ -27,7 +27,7 @@ nome_arquivo_log = ""
 
 # Processamento seguro da lista de uploads
 if arquivos_upload and len(arquivos_upload) > 0:
-    primeiro_arquivo = arquivos_upload[0] # Correção crítica: Acessa o primeiro item indexado da lista
+    primeiro_arquivo = arquivos_upload[0] # Acessa o primeiro item indexado da lista
     
     # CASO 1: PROCESSAMENTO DE ARQUIVO CSV
     if primeiro_arquivo.name.endswith('.csv'):
@@ -47,7 +47,7 @@ if arquivos_upload and len(arquivos_upload) > 0:
             if 'CNPJ_Emitente' not in df.columns:
                 df['CNPJ_Emitente'] = df['Nome_Emitente']
                 
-            st.success(f"Relatório CSV '{nome_arquivo_log}' carregado e padronizado! ({len(df)} registros)")
+            st.success(f"Relatório CSV '{nome_arquivo_log}' carregado! ({len(df)} registros)")
         except Exception as e:
             st.error(f"Erro ao ler o arquivo CSV: {str(e)}")
             
@@ -108,7 +108,7 @@ if df is not None:
     st.subheader("📋 Relatório de Dados Consolidados para Análise")
     st.dataframe(df, use_container_width=True)
 
-    # Padronização e tratamento rigoroso de texto e números para evitar divergências
+    # Padronização rigorosa
     df['Numero_NF'] = df['Numero_NF'].astype(str).str.strip()
     df['CNPJ_Emitente'] = df['CNPJ_Emitente'].astype(str).str.strip()
     df['Nome_Emitente'] = df['Nome_Emitente'].astype(str).str.strip()
@@ -117,13 +117,13 @@ if df is not None:
     # 1. Identificação de Lançamentos Duplicados
     duplicadas = df[df.duplicated(subset=['Numero_NF', 'Valor_Total'], keep=False)].copy()
     
-    # 2. Identificação de Anomalias Cadastrais / Reembolsos Suspeitos (Filtro Padronizado)
+    # 2. CORREÇÃO CIRÚRGICA: Filtro restrito para Anomalias Cadastrais (Apenas Reembolsos e Bônus Suspeitos)
     nome_emitente_minulo = df['Nome_Emitente'].str.lower()
     fantasmas_filtro = (
         (df['Valor_Total'] == 0) | 
         (df['Numero_NF'] == 'N/A') | 
         (df['Nome_Emitente'] == 'N/A') | 
-        (nome_emitente_minulo.str.contains('reembolso|bônus|bonus|presidente|diretoria', case=False, na=False))
+        (nome_emitente_minulo.str.contains('reembolso|bônus|bonus', case=False, na=False))
     )
     notas_fantasmas = df[fantasmas_filtro].copy()
     notas_fantasmas = notas_fantasmas[~notas_fantasmas.index.isin(duplicadas.index)]
@@ -136,7 +136,7 @@ if df is not None:
     superfaturadas = superfaturadas_base[~superfaturadas_base.index.isin(duplicadas.index)]
     superfaturadas = superfaturadas[~superfaturadas.index.isin(notas_fantasmas.index)]
 
-    # Amarrando rigorosamente as variáveis numéricas dos KPIs ao tamanho real das matrizes finais
+    # Vinculação direta dos contadores ao tamanho real das tabelas finais na tela
     qtd_duplicadas_reais = int(len(duplicadas) / 2) if len(duplicadas) > 0 else 0
     qtd_fantasmas_reais = len(notas_fantasmas)
     qtd_superfaturadas_reais = len(superfaturadas)
