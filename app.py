@@ -25,13 +25,13 @@ arquivos_upload = st.file_uploader("Escolha o relatório CSV ou selecione múlti
 df = None
 nome_arquivo_log = ""
 
-# CORREÇÃO DEFINITIVA DO TRAVAMENTO: Tratamento correto da lista de uploads do Streamlit
+# CORREÇÃO CRÍTICA DO LOOP: Acessando os elementos da lista por índice
 if arquivos_upload and len(arquivos_upload) > 0:
     
-    # Se o usuário subiu apenas 1 arquivo e ele é um CSV
+    # Se houver apenas 1 arquivo na lista e ele for um CSV
     if len(arquivos_upload) == 1 and arquivos_upload[0].name.endswith('.csv'):
         try:
-            arquivo_csv = arquivos_upload[0]
+            arquivo_csv = arquivos_upload[0] # Acessa o arquivo correto dentro da lista
             df = pd.read_csv(arquivo_csv)
             nome_arquivo_log = arquivo_csv.name
             
@@ -51,8 +51,9 @@ if arquivos_upload and len(arquivos_upload) > 0:
         except Exception as e:
             st.error(f"Erro ao ler o arquivo CSV: {str(e)}")
             
-    # Caso contrário, trata como lote de múltiplos XMLs
+    # Se forem múltiplos arquivos ou arquivos XML
     else:
+        st.info(f"Processando {len(arquivos_upload)} arquivo(s) XML...")
         dados_processados = []
         for arquivo in arquivos_upload:
             if arquivo.name.endswith('.xml'):
