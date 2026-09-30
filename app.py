@@ -1,16 +1,13 @@
 import streamlit as st
 import pandas as pd
 import os
-import requests
 import xml.etree.ElementTree as ET
-from google import genai
-from google.genai import types
 
 # Configuração da página Web
 st.set_page_config(page_title="ScoutIA Fiscal", page_icon="🛡️", layout="wide")
 
-st.title("🛡️ ScoutIA Fiscal — Detecção de Fraudes e Fechamentos")
-st.markdown("Suba seus relatórios financeiros ou múltiplos XMLs para identificar **notas duplicadas, superfaturamento e anomalias**.")
+st.title("🛡️ ScoutIA Fiscal — Auditoria Sênior Contábil")
+st.markdown("Auditoria instantânea de fechamentos, balanços financeiros (**CSV**) e **Notas Fiscais (XMLs)** rodando localmente.")
 
 # --- BANCO DE DADOS DE LICENÇAS COMERCIAIS ---
 BANCO_DE_LICENCAS = {
@@ -22,68 +19,17 @@ BANCO_DE_LICENCAS = {
 st.sidebar.subheader("🔑 Autenticação do Cliente")
 licenca_usuario = st.sidebar.text_input("Insira sua Chave de Licença ScoutIA:", type="password").strip()
 
-# --- INICIALIZAÇÃO DA API GEMINI ---
-CHAVE_INTERNA_IA = ""
-if "GEMINI_API_KEY" in st.secrets:
-    CHAVE_INTERNA_IA = st.secrets["GEMINI_API_KEY"]
-else:
-    CHAVE_INTERNA_IA = os.environ.get("GEMINI_API_KEY", "")
-
-client = None
-if CHAVE_INTERNA_IA:
-    try:
-        client = genai.Client(api_key=CHAVE_INTERNA_IA)
-    except Exception as e:
-        st.sidebar.error(f"Erro ao inicializar cliente da IA: {str(e)}")
-
-if not client:
-    st.sidebar.warning("⚠️ IA offline: Defina a chave GEMINI_API_KEY nos Secrets do Streamlit.")
-
-WEBHOOK_MONITORAMENTO = "https://google.com"
-
-# --- FUNÇÃO DE CACHE DA IA PARA EVITAR GARGALOS E CONGESTIONAMENTOS ---
-@st.cache_data(show_spinner=False)
-def executar_chamada_ia_com_fallback(resumo_str, prompt_sistema_str, _client_ia):
-    if _client_ia is None:
-        return "Erro: Cliente de IA não configurado."
-        
-    modelos_producao = [
-        'gemini-3.8-flash',
-        'gemini-3.7-flash',
-        'gemini-3.5-flash',
-        'gemini-2.5-flash'
-    ]
-    
-    erro_acumulado = ""
-    for modelo_teste in modelos_producao:
-        try:
-            resposta = _client_ia.models.generate_content(
-                model=modelo_teste,
-                contents=f"Dados consolidados da pré-triagem do fechamento:\n\n{resumo_str}",
-                config=types.GenerateContentConfig(
-                    system_instruction=prompt_sistema_str,
-                    temperature=0.1
-                )
-            )
-            if resposta and resposta.text:
-                return resposta.text
-        except Exception as e:
-            erro_acumulado += f"[{modelo_teste}]: {str(e)} | "
-            continue
-            
-    return f"ERRO DE INFRAESTRUTURA: Todos os servidores estão instáveis. Detalhes: {erro_acumulado}"
-
-# Upload de arquivos (Híbrido)
+# Upload de arquivos (Configurado para aceitar múltiplos arquivos)
 arquivos_upload = st.file_uploader("Escolha o relatório CSV ou selecione múltiplas Notas Fiscais XML", type=["csv", "xml"], accept_multiple_files=True)
 
 df = None
 nome_arquivo_log = ""
 
-# CORREÇÃO CRÍTICA AQUI: Acessamos o arquivo de forma segura tratando a lista
+# Processamento da lista de arquivos de forma segura
 if arquivos_upload and len(arquivos_upload) > 0:
-    primeiro_arquivo = arquivos_upload[0] # Extrai o primeiro item da lista de uploads
+    primeiro_arquivo = arquivos_upload[0] # Pega o primeiro item de forma segura para checar o tipo
     
-    # CASO 1: PROCESSAMENTO DE ARQUIVO CSV
+    # CASO 1: PROCESSAMENTO DE ARQUIVO CSV (Balanço de Caixa)
     if primeiro_arquivo.name.endswith('.csv'):
         try:
             df = pd.read_csv(primeiro_arquivo)
@@ -147,6 +93,7 @@ if arquivos_upload and len(arquivos_upload) > 0:
             nome_arquivo_log = f"Lote_XML_{len(dados_processados)}_notas.csv"
             st.success(f"{len(df)} Nota(s) Fiscal(ais) consolidada(s) com sucesso!")
 if df is not None:
+    # Controle de Plano Comercial
     if licenca_usuario in BANCO_DE_LICENCAS:
         info_plano = BANCO_DE_LICENCAS[licenca_usuario]
         limite = info_plano["limite_linhas"]
@@ -154,67 +101,50 @@ if df is not None:
             st.warning(f"Contrato {info_plano['plano']} limita a análise a {limite} linhas. Dados truncados.")
             df = df.head(limite)
     else:
-        st.sidebar.error("Modo Demonstração: Limitado a 50 registros para testes.")
-        df = df.head(50)
+        st.sidebar.error("Modo Demonstração: Exibindo até 200 registros no painel.")
+        df = df.head(200)
     
-    st.subheader("📋 Painel de Dados Consolidados")
+    st.subheader("📋 Painel Contábil Consolidado")
     st.dataframe(df)
 
-    # --- MOTOR DE PRÉ-AUDITORIA DETECTIVA (PANDAS) ---
-    st.subheader("🔍 Triagem Automatizada de Riscos")
+    # --- MOTOR ULTRA-RÁPIDO DE AUDITORIA CONTÁBIL (PANDAS LOCAL) ---
+    st.subheader("🔍 Relatório Técnico de Triagem Forense (Instantâneo)")
     
+    # Padronização de tipos de dados para evitar conflitos
     df['Numero_NF'] = df['Numero_NF'].astype(str)
     df['CNPJ_Emitente'] = df['CNPJ_Emitente'].astype(str)
     df['Valor_Total'] = pd.to_numeric(df['Valor_Total'], errors='coerce').fillna(0.0)
     
+    # 1. Cruzamento Detectivo de Notas/Lançamentos Duplicados
     duplicadas = df[df.duplicated(subset=['Numero_NF', 'Valor_Total'], keep=False)]
     
+    # 2. Análise Estatística de Superfaturamento / Desvios Críticos
     media_por_fornecedor = df.groupby('CNPJ_Emitente')['Valor_Total'].transform('mean')
     desvio_por_fornecedor = df.groupby('CNPJ_Emitente')['Valor_Total'].transform('std').fillna(0)
-    
+    # Filtra desvios que passam de 2 desvios padrões (anomalias contábeis legítimas)
     superfaturadas = df[(df['Valor_Total'] > (media_por_fornecedor + (2 * desvio_por_fornecedor))) & (df['Valor_Total'] > 5000)]
+    
+    # 3. Investigação Preventiva de Notas Fantasmas (Lançamentos com valor zerado ou sem identificação)
+    notas_fantasmas = df[(df['Valor_Total'] == 0) | (df['Numero_NF'] == 'N/A') | (df['Nome_Emitente'] == 'N/A')]
 
-    col1, col2 = st.columns(2)
-    with col1:
-        st.metric("Suspeitas de Duplicidade (Mesmo ID/Valor)", len(duplicadas))
-        if not duplicadas.empty:
-            st.dataframe(duplicadas[['Numero_NF', 'Nome_Emitente', 'Valor_Total']])
-            
-    with col2:
-        st.metric("Desvios Críticos de Valor", len(superfaturadas))
-        if not superfaturadas.empty:
-            st.dataframe(superfaturadas[['Numero_NF', 'Nome_Emitente', 'Valor_Total']])
+    # Exibição dos cards de métricas em tempo real
+    c1, c2, c3 = st.columns(3)
+    c1.metric("🚨 Lançamentos Duplicados", len(duplicadas))
+    c2.metric("📈 Desvios de Faturamento", len(superfaturadas))
+    c3.metric("👻 Suspeitas de Nota Fantasma", len(notas_fantasmas))
 
-    # --- DISPARO DA INTELIGÊNCIA ARTIFICIAL E CACHE ---
-    if st.button("🛡️ Gerar Parecer Antifraude com ScoutIA"):
-        if not client:
-            st.error("Erro: A IA não pôde ser iniciada. Configure a variável 'GEMINI_API_KEY' no Streamlit.")
-        else:
-            with st.spinner("A IA está cruzando os indícios e redigindo o parecer técnico..."):
-                
-                resumo_auditoria = {
-                    "total_transacoes_analisadas": len(df),
-                    "total_valor_movimentado": float(df['Valor_Total'].sum()),
-                    "casos_duplicidade_detectados": duplicadas.head(10).to_dict(orient='records'),
-                    "casos_desvio_valor_detectados": superfaturadas.head(10).to_dict(orient='records'),
-                    "maiores_gastos_por_categoria": df.groupby('Natureza_Operacao')['Valor_Total'].sum().nlargest(5).to_dict()
-                }
-                
-                prompt_sistema = (
-                    "Você é um Perito Forense Digital e Auditor Fiscal Sênior especializado em Compliance e Prevenção a Fraudes. "
-                    "Analise o resumo dos dados de fechamento fornecidos. Seu papel é emitir um Relatório de Investigação Fiscal detalhado.\n\n"
-                    "Foque em apontar e explicar riscos de: \n"
-                    "1) Lançamentos Duplicados ou IDs idênticos com saídas iguais.\n"
-                    "2) Desvios Críticos de Valor (superfaturamento ou desvios em categorias específicas).\n"
-                    "3) Transações incomuns fora do padrão operacional médio.\n\n"
-                    "Seja extremamente formal, técnico e ofereça recomendações claras de governança e auditoria."
-                )
-                
-                resumo_str = str(resumo_auditoria)
-                resultado_texto = executar_chamada_ia_com_fallback(resumo_str, prompt_sistema, client)
-                
-                if "ERRO DE INFRAESTRUTURA" in resultado_texto:
-                    st.error(resultado_texto)
-                else:
-                    st.subheader("🛡️ Relatório Pericial Forense (ScoutIA)")
-                    st.markdown(resultado_texto)
+    # Resultados detalhados exibidos imediatamente sem passar por filas da IA
+    if not duplicadas.empty:
+        st.error("⚠️ **Inconformidade Detectada:** Lançamentos com ID e Valores idênticos encontrados no fechamento:")
+        st.dataframe(duplicadas[['Numero_NF', 'Nome_Emitente', 'Valor_Total', 'Data_Emissao']])
+        
+    if not superfaturadas.empty:
+        st.warning("⚠️ **Alerta de Risco:** Pagamentos que violam o desvio operacional padrão do fornecedor:")
+        st.dataframe(superfaturadas[['Numero_NF', 'Nome_Emitente', 'Valor_Total', 'Natureza_Operacao']])
+        
+    if not notas_fantasmas.empty:
+        st.info("⚠️ **Aviso de Compliance:** Lançamentos com inconsistência cadastral ou valores nulos (Risco de Empresa de Fachada):")
+        st.dataframe(notas_fantasmas[['Numero_NF', 'Nome_Emitente', 'Valor_Total']])
+        
+    if duplicadas.empty and superfaturadas.empty and notas_fantasmas.empty:
+        st.success("🛡️ **Compliance Aprovado:** Nenhuma duplicidade, superfaturamento ou anomalia cadastral foi detectada no lote analisado.")
