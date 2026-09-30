@@ -79,9 +79,11 @@ arquivos_upload = st.file_uploader("Escolha o relatório CSV ou selecione múlti
 df = None
 nome_arquivo_log = ""
 
+# CORREÇÃO CRÍTICA AQUI: Acessamos o arquivo de forma segura tratando a lista
 if arquivos_upload and len(arquivos_upload) > 0:
-    primeiro_arquivo = arquivos_upload
+    primeiro_arquivo = arquivos_upload[0] # Extrai o primeiro item da lista de uploads
     
+    # CASO 1: PROCESSAMENTO DE ARQUIVO CSV
     if primeiro_arquivo.name.endswith('.csv'):
         try:
             df = pd.read_csv(primeiro_arquivo)
@@ -103,6 +105,7 @@ if arquivos_upload and len(arquivos_upload) > 0:
         except Exception as e:
             st.error(f"Erro ao ler o arquivo CSV: {str(e)}")
             
+    # CASO 2: PROCESSAMENTO DE MÚLTIPLOS XMLs
     else:
         st.info(f"Processando {len(arquivos_upload)} arquivo(s) XML...")
         dados_processados = []
